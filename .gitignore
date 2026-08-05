@@ -1,0 +1,23 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+appsettings.*.local.json
+
+## IDE
+.vscode/
+.idea/
+*.DotSettings.user
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Logs
+logs/
+*.log
+
+## Secrets (không bao giờ commit)
+**/secrets.json
