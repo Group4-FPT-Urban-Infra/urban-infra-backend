@@ -10,7 +10,6 @@ using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
 using UrbanInfraSystem.Infrastructure.Services;
 
-
 namespace UrbanInfraSystem.Infrastructure;
 
 public static class DependencyInjection
@@ -25,13 +24,13 @@ public static class DependencyInjection
 
         // --- Identity ---
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
-            {
-                options.Password.RequiredLength = 6;
-                options.Password.RequireNonAlphanumeric = false;
-                options.Password.RequireUppercase = false;
-                options.User.RequireUniqueEmail = true;
-                options.SignIn.RequireConfirmedEmail = false; // có thể bật khi làm email verification
-            })
+        {
+            options.Password.RequiredLength = 6;
+            options.Password.RequireNonAlphanumeric = false;
+            options.Password.RequireUppercase = false;
+            options.User.RequireUniqueEmail = true;
+            options.SignIn.RequireConfirmedEmail = false; // có thể bật khi làm email verification
+        })
             .AddEntityFrameworkStores<AppDbContext>()
             .AddDefaultTokenProviders();
 
@@ -41,10 +40,10 @@ public static class DependencyInjection
         var jwtSettings = jwtSection.Get<JwtSettings>()!;
 
         services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
+        {
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+        })
             .AddJwtBearer(options =>
             {
                 options.RequireHttpsMetadata = false;
@@ -76,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<IIssueStatusService, IssueStatusService>();
         services.AddScoped<IDepartmentService, DepartmentService>();
         services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
+        services.AddScoped<ISlaPolicyService, SlaPolicyService>();
 
         return services;
     }
