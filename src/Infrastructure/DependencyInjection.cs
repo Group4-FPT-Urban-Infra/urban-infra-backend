@@ -8,7 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
-
+using UrbanInfraSystem.Infrastructure.Services;
 
 namespace UrbanInfraSystem.Infrastructure;
 
@@ -18,7 +18,9 @@ public static class DependencyInjection
     {
         // --- Persistence ---
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("DefaultConnection"),
+                x => x.UseNetTopologySuite()));
 
         // --- Identity ---
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -67,6 +69,7 @@ public static class DependencyInjection
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAreaService, AreaService>();
 
         return services;
     }
