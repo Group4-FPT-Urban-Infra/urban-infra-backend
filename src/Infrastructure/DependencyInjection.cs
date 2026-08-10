@@ -10,6 +10,7 @@ using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
 using UrbanInfraSystem.Infrastructure.Services;
 
+
 namespace UrbanInfraSystem.Infrastructure;
 
 public static class DependencyInjection
@@ -46,9 +47,8 @@ public static class DependencyInjection
             })
             .AddJwtBearer(options =>
             {
-                options.RequireHttpsMetadata = true;
+                options.RequireHttpsMetadata = false;
                 options.SaveToken = true;
-                options.MapInboundClaims = false; // giữ nguyên tên claim gốc (sub, email...)
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -58,6 +58,7 @@ public static class DependencyInjection
                     ValidIssuer = jwtSettings.Issuer,
                     ValidAudience = jwtSettings.Audience,
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
+                    RoleClaimType = "role",  // Map "role" claim từ JWT thành ClaimTypes.Role
                     ClockSkew = TimeSpan.FromMinutes(1)
                 };
             });
@@ -70,6 +71,7 @@ public static class DependencyInjection
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAreaService, AreaService>();
+        services.AddScoped<IIssueTypeService, IssueTypeService>();
 
         return services;
     }

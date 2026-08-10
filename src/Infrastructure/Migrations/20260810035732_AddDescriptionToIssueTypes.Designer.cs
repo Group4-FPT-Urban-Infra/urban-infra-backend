@@ -3,8 +3,8 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using NetTopologySuite.Geometries;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 #nullable disable
@@ -12,9 +12,11 @@ using UrbanInfraSystem.Infrastructure.Persistence;
 namespace UrbanInfraSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810035732_AddDescriptionToIssueTypes")]
+    partial class AddDescriptionToIssueTypes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -127,59 +129,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("UserTokens", (string)null);
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Area", b =>
-                {
-                    b.Property<int>("AreaId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AreaId"));
-
-                    b.Property<string>("AreaCode")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("AreaName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<string>("AreaType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<Geometry>("Boundary")
-                        .HasColumnType("geography");
-
-                    b.Property<decimal?>("CentroidLatitude")
-                        .HasPrecision(9, 6)
-                        .HasColumnType("decimal(9,6)");
-
-                    b.Property<decimal?>("CentroidLongitude")
-                        .HasPrecision(9, 6)
-                        .HasColumnType("decimal(9,6)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<int?>("ParentAreaId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("AreaId");
-
-                    b.HasIndex("ParentAreaId");
-
-                    b.ToTable("Areas", (string)null);
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
@@ -446,16 +395,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Area", b =>
-                {
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.Area", "ParentArea")
-                        .WithMany("SubAreas")
-                        .HasForeignKey("ParentAreaId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ParentArea");
-                });
-
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.IssueType", "ParentIssueType")
@@ -473,11 +412,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Area", b =>
-                {
-                    b.Navigation("SubAreas");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>

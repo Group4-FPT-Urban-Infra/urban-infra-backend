@@ -21,3 +21,6 @@ logs/
 
 ## Secrets (không bao giờ commit)
 **/secrets.json
+
+docs/ERD.json
+docs/SRS.md

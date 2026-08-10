@@ -21,6 +21,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Area> Areas => Set<Area>();
+    public DbSet<IssueType> IssueTypes => Set<IssueType>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -78,6 +79,54 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany(a => a.SubAreas)
                   .HasForeignKey(a => a.ParentAreaId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // IssueType configuration
+        builder.Entity<IssueType>(entity =>
+        {
+            entity.ToTable("IssueTypes");
+            
+            // Primary key
+            entity.HasKey(it => it.IssueTypeId);
+            entity.Property(it => it.IssueTypeId)
+                  .ValueGeneratedOnAdd();
+
+            // Required fields
+            entity.Property(it => it.TypeCode)
+                  .IsRequired()
+                  .HasMaxLength(30);
+            
+            entity.Property(it => it.TypeName)
+                  .IsRequired()
+                  .HasMaxLength(150)
+                  .IsUnicode(true); // NVARCHAR
+
+            entity.Property(it => it.IconUrl)
+                  .HasMaxLength(1000)
+                  .IsUnicode(true);
+
+            entity.Property(it => it.Description)
+                  .HasMaxLength(2000)
+                  .IsUnicode(true);
+
+            // Unique index on TypeCode
+            entity.HasIndex(it => it.TypeCode)
+                  .IsUnique()
+                  .HasDatabaseName("IX_IssueTypes_TypeCode");
+
+            // Self-referencing relationship (parent-child hierarchy)
+            entity.HasOne(it => it.ParentIssueType)
+                  .WithMany(it => it.SubIssueTypes)
+                  .HasForeignKey(it => it.ParentIssueTypeId)
+                  .OnDelete(DeleteBehavior.Restrict); // Prevent cascade delete to avoid orphan issues
+
+            // Index for parent lookup
+            entity.HasIndex(it => it.ParentIssueTypeId)
+                  .HasDatabaseName("IX_IssueTypes_ParentIssueTypeId");
+
+            // Index for active filter
+            entity.HasIndex(it => it.IsActive)
+                  .HasDatabaseName("IX_IssueTypes_IsActive");
         });
     }
 }
