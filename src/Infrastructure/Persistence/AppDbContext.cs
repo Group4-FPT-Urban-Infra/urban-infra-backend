@@ -20,6 +20,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     }
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Area> Areas => Set<Area>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -45,6 +46,38 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany(u => u.RefreshTokens)
                   .HasForeignKey(rt => rt.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<Area>(entity =>
+        {
+            entity.ToTable("Areas");
+            entity.HasKey(a => a.AreaId);
+
+            entity.Property(a => a.AreaCode)
+                  .IsRequired()
+                  .HasMaxLength(30);
+
+            entity.Property(a => a.AreaName)
+                  .IsRequired()
+                  .HasMaxLength(150);
+
+            entity.Property(a => a.AreaType)
+                  .IsRequired()
+                  .HasMaxLength(30);
+
+            entity.Property(a => a.Boundary)
+                  .HasColumnType("geography");
+
+            entity.Property(a => a.CentroidLatitude)
+                  .HasPrecision(9, 6);
+
+            entity.Property(a => a.CentroidLongitude)
+                  .HasPrecision(9, 6);
+
+            entity.HasOne(a => a.ParentArea)
+                  .WithMany(a => a.SubAreas)
+                  .HasForeignKey(a => a.ParentAreaId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
