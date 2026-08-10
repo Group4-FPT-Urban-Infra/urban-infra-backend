@@ -72,6 +72,10 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAreaService, AreaService>();
         services.AddScoped<IIssueTypeService, IssueTypeService>();
+        services.AddScoped<IIssuePriorityService, IssuePriorityService>();
+        services.AddScoped<IIssueStatusService, IssueStatusService>();
+        services.AddScoped<IDepartmentService, DepartmentService>();
+        services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
 
         return services;
     }
