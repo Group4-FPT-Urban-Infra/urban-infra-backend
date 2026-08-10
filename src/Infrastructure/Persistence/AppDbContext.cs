@@ -1,17 +1,14 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Infrastructure.Identity;
-using Microsoft.AspNetCore.Identity;
-
-
 
 namespace UrbanInfraSystem.Infrastructure.Persistence;
 
 /// <summary>
-/// DbContext gốc, kế thừa IdentityDbContext để có sẵn bảng Users/Roles/Claims của
-/// ASP.NET Core Identity. Các entity nghiệp vụ (Issue, Department, Category...)
-/// sẽ được thêm DbSet ở Sprint 2 khi xây module CRUD chính.
+/// DbContext gốc, kế thừa IdentityDbContext để có sẵn các bảng Users/Roles/Claims của ASP.NET Core Identity.
+/// Khai báo đầy đủ các DbSet nghiệp vụ cho hệ thống quản lý hạ tầng đô thị.
 /// </summary>
 public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, string>
 {
@@ -26,12 +23,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<IssueStatus> IssueStatuses => Set<IssueStatus>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<DepartmentMember> DepartmentMembers => Set<DepartmentMember>();
+    public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
 
-        // Đổi tên bảng Identity mặc định cho gọn (tuỳ chọn).
+        // 1. Đổi tên các bảng ASP.NET Core Identity
         builder.Entity<ApplicationUser>().ToTable("Users");
         builder.Entity<ApplicationRole>().ToTable("Roles");
         builder.Entity<IdentityUserRole<string>>().ToTable("UserRoles");
@@ -40,6 +38,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         builder.Entity<IdentityRoleClaim<string>>().ToTable("RoleClaims");
         builder.Entity<IdentityUserToken<string>>().ToTable("UserTokens");
 
+        // 2. RefreshTokens
         builder.Entity<RefreshToken>(entity =>
         {
             entity.ToTable("RefreshTokens");
@@ -53,86 +52,47 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // 3. Areas
         builder.Entity<Area>(entity =>
         {
             entity.ToTable("Areas");
             entity.HasKey(a => a.AreaId);
 
-            entity.Property(a => a.AreaCode)
-                  .IsRequired()
-                  .HasMaxLength(30);
-
-            entity.Property(a => a.AreaName)
-                  .IsRequired()
-                  .HasMaxLength(150);
-
-            entity.Property(a => a.AreaType)
-                  .IsRequired()
-                  .HasMaxLength(30);
-
-            entity.Property(a => a.Boundary)
-                  .HasColumnType("geography");
-
-            entity.Property(a => a.CentroidLatitude)
-                  .HasPrecision(9, 6);
-
-            entity.Property(a => a.CentroidLongitude)
-                  .HasPrecision(9, 6);
-
+            entity.Property(a => a.AreaCode).IsRequired().HasMaxLength(30);
+            entity.Property(a => a.AreaName).IsRequired().HasMaxLength(150);
+            entity.Property(a => a.AreaType).IsRequired().HasMaxLength(30);
+            entity.Property(a => a.Boundary).HasColumnType("geography");
+            entity.Property(a => a.CentroidLatitude).HasPrecision(9, 6);
+            entity.Property(a => a.CentroidLongitude).HasPrecision(9, 6);
             entity.HasOne(a => a.ParentArea)
                   .WithMany(a => a.SubAreas)
                   .HasForeignKey(a => a.ParentAreaId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // IssueType configuration
+        // 4. IssueTypes (Giữ lại cấu hình phân cấp chi tiết của dev)
         builder.Entity<IssueType>(entity =>
         {
             entity.ToTable("IssueTypes");
-            
-            // Primary key
             entity.HasKey(it => it.IssueTypeId);
-            entity.Property(it => it.IssueTypeId)
-                  .ValueGeneratedOnAdd();
+            entity.Property(it => it.IssueTypeId).ValueGeneratedOnAdd();
+            entity.Property(it => it.TypeCode).IsRequired().HasMaxLength(30);
+            entity.Property(it => it.TypeName).IsRequired().HasMaxLength(150).IsUnicode(true);
+            entity.Property(it => it.IconUrl).HasMaxLength(1000).IsUnicode(true);
+            entity.Property(it => it.Description).HasMaxLength(2000).IsUnicode(true);
 
-            // Required fields
-            entity.Property(it => it.TypeCode)
-                  .IsRequired()
-                  .HasMaxLength(30);
-            
-            entity.Property(it => it.TypeName)
-                  .IsRequired()
-                  .HasMaxLength(150)
-                  .IsUnicode(true); // NVARCHAR
+            entity.HasIndex(it => it.TypeCode).IsUnique().HasDatabaseName("IX_IssueTypes_TypeCode");
 
-            entity.Property(it => it.IconUrl)
-                  .HasMaxLength(1000)
-                  .IsUnicode(true);
-
-            entity.Property(it => it.Description)
-                  .HasMaxLength(2000)
-                  .IsUnicode(true);
-
-            // Unique index on TypeCode
-            entity.HasIndex(it => it.TypeCode)
-                  .IsUnique()
-                  .HasDatabaseName("IX_IssueTypes_TypeCode");
-
-            // Self-referencing relationship (parent-child hierarchy)
             entity.HasOne(it => it.ParentIssueType)
                   .WithMany(it => it.SubIssueTypes)
                   .HasForeignKey(it => it.ParentIssueTypeId)
-                  .OnDelete(DeleteBehavior.Restrict); // Prevent cascade delete to avoid orphan issues
+                  .OnDelete(DeleteBehavior.Restrict);
 
-            // Index for parent lookup
-            entity.HasIndex(it => it.ParentIssueTypeId)
-                  .HasDatabaseName("IX_IssueTypes_ParentIssueTypeId");
-
-            // Index for active filter
-            entity.HasIndex(it => it.IsActive)
-                  .HasDatabaseName("IX_IssueTypes_IsActive");
+            entity.HasIndex(it => it.ParentIssueTypeId).HasDatabaseName("IX_IssueTypes_ParentIssueTypeId");
+            entity.HasIndex(it => it.IsActive).HasDatabaseName("IX_IssueTypes_IsActive");
         });
 
+        // 5. IssuePriorities
         builder.Entity<IssuePriority>(entity =>
         {
             entity.ToTable("IssuePriorities");
@@ -144,6 +104,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasIndex(x => x.SeverityRank).IsUnique();
         });
 
+        // 6. IssueStatuses
         builder.Entity<IssueStatus>(entity =>
         {
             entity.ToTable("IssueStatuses");
@@ -155,6 +116,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasIndex(x => x.DisplayOrder).IsUnique();
         });
 
+        // 7. Departments
         builder.Entity<Department>(entity =>
         {
             entity.ToTable("Departments");
@@ -174,6 +136,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // 8. DepartmentMembers
         builder.Entity<DepartmentMember>(entity =>
         {
             entity.ToTable("DepartmentMembers");
@@ -183,14 +146,47 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.Property(x => x.JoinedAt).HasColumnType("datetime2(0)");
             entity.Property(x => x.LeftAt).HasColumnType("datetime2(0)");
             entity.HasIndex(x => x.UserId);
+
             entity.HasOne(x => x.Department)
                   .WithMany(x => x.Members)
                   .HasForeignKey(x => x.DepartmentId)
                   .OnDelete(DeleteBehavior.Restrict);
+
             entity.HasOne<ApplicationUser>()
                   .WithMany()
                   .HasForeignKey(x => x.UserId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 9. SlaPolicies (Gộp cấu hình tính năng SLA của bạn)
+        builder.Entity<SlaPolicy>(entity =>
+        {
+            entity.ToTable("SlaPolicies");
+            entity.HasKey(s => s.Id);
+
+            entity.Property(s => s.ResolutionMinutes).IsRequired();
+            entity.Property(s => s.FirstResponseMinutes).IsRequired();
+
+            entity.HasOne(s => s.IssueType)
+                  .WithMany(it => it.SlaPolicies)
+                  .HasForeignKey(s => s.IssueTypeId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired();
+
+            entity.HasOne(s => s.IssuePriority)
+                  .WithMany(p => p.SlaPolicies)
+                  .HasForeignKey(s => s.PriorityId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired();
+
+            // Đảm bảo mỗi cặp IssueType + Priority chỉ có 1 chính sách SLA
+            entity.HasIndex(s => new { s.IssueTypeId, s.PriorityId }).IsUnique();
+
+            // Lọc các bản ghi xóa mềm (Soft-delete filter)
+            entity.HasQueryFilter(s => !s.IsDeleted);
+
+            // Constraint kiểm tra thời gian dương
+            entity.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0");
         });
     }
 }
