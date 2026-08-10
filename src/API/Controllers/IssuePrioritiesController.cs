@@ -49,9 +49,9 @@ public class IssuePrioritiesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IssuePriorityResponse>> GetById([FromRoute] int id, CancellationToken ct)
     {
-        if (id is < 1 or > 255) return NotFound();
+        if (id < 1) return NotFound();
 
-        var result = await _service.GetByIdAsync((byte)id, ct);
+        var result = await _service.GetByIdAsync(id, ct);
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -87,9 +87,9 @@ public class IssuePrioritiesController : ControllerBase
         [FromBody] UpdateIssuePriorityRequest request,
         CancellationToken ct)
     {
-        if (id is < 1 or > 255) return NotFound();
+        if (id < 1) return NotFound();
 
-        var updated = await _service.UpdateAsync((byte)id, request, ct);
+        var updated = await _service.UpdateAsync(id, request, ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -104,9 +104,9 @@ public class IssuePrioritiesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Deactivate([FromRoute] int id, CancellationToken ct)
     {
-        if (id is < 1 or > 255) return NotFound();
+        if (id < 1) return NotFound();
 
-        var success = await _service.DeactivateAsync((byte)id, ct);
+        var success = await _service.DeactivateAsync(id, ct);
         return success ? NoContent() : NotFound();
     }
 
@@ -121,9 +121,9 @@ public class IssuePrioritiesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
     {
-        if (id is < 1 or > 255) return NotFound();
+        if (id < 1) return NotFound();
 
-        var success = await _service.DeleteAsync((byte)id, ct);
+        var success = await _service.DeleteAsync(id, ct);
         return success ? NoContent() : NotFound();
     }
 }

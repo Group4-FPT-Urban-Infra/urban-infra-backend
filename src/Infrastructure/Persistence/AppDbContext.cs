@@ -22,6 +22,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Area> Areas => Set<Area>();
     public DbSet<IssueType> IssueTypes => Set<IssueType>();
+    public DbSet<IssuePriority> IssuePriorities => Set<IssuePriority>();
+    public DbSet<IssueStatus> IssueStatuses => Set<IssueStatus>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<DepartmentMember> DepartmentMembers => Set<DepartmentMember>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -127,6 +131,66 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             // Index for active filter
             entity.HasIndex(it => it.IsActive)
                   .HasDatabaseName("IX_IssueTypes_IsActive");
+        });
+
+        builder.Entity<IssuePriority>(entity =>
+        {
+            entity.ToTable("IssuePriorities");
+            entity.HasKey(x => x.PriorityId);
+            entity.Property(x => x.PriorityId).ValueGeneratedOnAdd();
+            entity.Property(x => x.PriorityCode).IsRequired().HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.PriorityName).IsRequired().HasMaxLength(50);
+            entity.HasIndex(x => x.PriorityCode).IsUnique();
+            entity.HasIndex(x => x.SeverityRank).IsUnique();
+        });
+
+        builder.Entity<IssueStatus>(entity =>
+        {
+            entity.ToTable("IssueStatuses");
+            entity.HasKey(x => x.StatusId);
+            entity.Property(x => x.StatusId).ValueGeneratedOnAdd();
+            entity.Property(x => x.StatusCode).IsRequired().HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.StatusName).IsRequired().HasMaxLength(80);
+            entity.HasIndex(x => x.StatusCode).IsUnique();
+            entity.HasIndex(x => x.DisplayOrder).IsUnique();
+        });
+
+        builder.Entity<Department>(entity =>
+        {
+            entity.ToTable("Departments");
+            entity.HasKey(x => x.DepartmentId);
+            entity.Property(x => x.DepartmentId).ValueGeneratedOnAdd();
+            entity.Property(x => x.DepartmentCode).IsRequired().HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.DepartmentName).IsRequired().HasMaxLength(200);
+            entity.Property(x => x.Email).HasMaxLength(255);
+            entity.Property(x => x.Phone).HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.Address).HasMaxLength(300);
+            entity.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.UpdatedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.DepartmentCode).IsUnique();
+            entity.HasOne(x => x.ParentDepartment)
+                  .WithMany(x => x.ChildDepartments)
+                  .HasForeignKey(x => x.ParentDepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<DepartmentMember>(entity =>
+        {
+            entity.ToTable("DepartmentMembers");
+            entity.HasKey(x => new { x.DepartmentId, x.UserId });
+            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.Property(x => x.JobTitle).HasMaxLength(120);
+            entity.Property(x => x.JoinedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.LeftAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne(x => x.Department)
+                  .WithMany(x => x.Members)
+                  .HasForeignKey(x => x.DepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>()
+                  .WithMany()
+                  .HasForeignKey(x => x.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
