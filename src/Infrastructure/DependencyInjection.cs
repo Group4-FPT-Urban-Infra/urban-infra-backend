@@ -19,7 +19,9 @@ public static class DependencyInjection
     {
         // --- Persistence ---
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("DefaultConnection"),
+                x => x.UseNetTopologySuite()));
 
         // --- Identity ---
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -68,6 +70,7 @@ public static class DependencyInjection
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAreaService, AreaService>();
         services.AddScoped<IIssueTypeService, IssueTypeService>();
 
         return services;

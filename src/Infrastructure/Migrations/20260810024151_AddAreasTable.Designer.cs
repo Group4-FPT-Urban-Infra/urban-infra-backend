@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using UrbanInfraSystem.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using UrbanInfraSystem.Infrastructure.Persistence;
 namespace UrbanInfraSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810024151_AddAreasTable")]
+    partial class AddAreasTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -180,74 +183,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.HasIndex("ParentAreaId");
 
                     b.ToTable("Areas", (string)null);
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
-                {
-                    b.Property<int>("IssueTypeId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IssueTypeId"));
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .IsUnicode(true)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<string>("IconUrl")
-                        .HasMaxLength(1000)
-                        .IsUnicode(true)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<int?>("ParentIssueTypeId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("TypeCode")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("TypeName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .IsUnicode(true)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("IssueTypeId");
-
-                    b.HasIndex("IsActive")
-                        .HasDatabaseName("IX_IssueTypes_IsActive");
-
-                    b.HasIndex("ParentIssueTypeId")
-                        .HasDatabaseName("IX_IssueTypes_ParentIssueTypeId");
-
-                    b.HasIndex("TypeCode")
-                        .IsUnique()
-                        .HasDatabaseName("IX_IssueTypes_TypeCode");
-
-                    b.ToTable("IssueTypes", (string)null);
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RefreshToken", b =>
@@ -456,16 +391,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("ParentArea");
                 });
 
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
-                {
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.IssueType", "ParentIssueType")
-                        .WithMany("SubIssueTypes")
-                        .HasForeignKey("ParentIssueTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ParentIssueType");
-                });
-
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RefreshToken", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
@@ -478,11 +403,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Area", b =>
                 {
                     b.Navigation("SubAreas");
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
-                {
-                    b.Navigation("SubIssueTypes");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", b =>
