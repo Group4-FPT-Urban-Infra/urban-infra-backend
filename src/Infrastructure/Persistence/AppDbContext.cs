@@ -24,6 +24,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<DepartmentMember> DepartmentMembers => Set<DepartmentMember>();
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
+    public DbSet<RoutingRule> RoutingRules => Set<RoutingRule>();
     public DbSet<IssueUpvote> IssueUpvotes => Set<IssueUpvote>();
     public DbSet<Issue> Issues => Set<Issue>();
     public DbSet<IssueAttachment> IssueAttachments => Set<IssueAttachment>();
@@ -315,6 +316,31 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasOne<ApplicationUser>()
                   .WithMany()
                   .HasForeignKey(u => u.CreatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 10. RoutingRules
+        builder.Entity<RoutingRule>(entity =>
+        {
+            entity.ToTable("RoutingRules");
+            entity.HasKey(x => x.RoutingRuleId);
+            entity.Property(x => x.RoutingRuleId).ValueGeneratedOnAdd();
+            entity.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.UpdatedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => new { x.AreaId, x.IssueTypeId }).IsUnique();
+            entity.HasIndex(x => x.DepartmentId);
+
+            entity.HasOne(x => x.IssueType)
+                  .WithMany()
+                  .HasForeignKey(x => x.IssueTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Area)
+                  .WithMany()
+                  .HasForeignKey(x => x.AreaId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Department)
+                  .WithMany()
+                  .HasForeignKey(x => x.DepartmentId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
     }
