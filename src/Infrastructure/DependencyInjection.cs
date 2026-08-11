@@ -81,6 +81,8 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
         services.AddScoped<ISlaPolicyService, SlaPolicyService>();
         services.AddScoped<IUserManagementService, UserManagementService>();
+        services.AddScoped<IIssueUpvoteService, IssueUpvoteService>();
+        services.AddScoped<IRoutingRuleService, RoutingRuleService>();
 
         return services;
     }

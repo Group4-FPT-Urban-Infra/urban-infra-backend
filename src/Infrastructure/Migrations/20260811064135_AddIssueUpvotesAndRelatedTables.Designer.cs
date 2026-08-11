@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using UrbanInfraSystem.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using UrbanInfraSystem.Infrastructure.Persistence;
 namespace UrbanInfraSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260811064135_AddIssueUpvotesAndRelatedTables")]
+    partial class AddIssueUpvotesAndRelatedTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -684,44 +687,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RoutingRule", b =>
-                {
-                    b.Property<int>("RoutingRuleId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RoutingRuleId"));
-
-                    b.Property<int>("AreaId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(0)");
-
-                    b.Property<int>("DepartmentId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("IssueTypeId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(0)");
-
-                    b.HasKey("RoutingRuleId");
-
-                    b.HasIndex("DepartmentId");
-
-                    b.HasIndex("IssueTypeId");
-
-                    b.HasIndex("AreaId", "IssueTypeId")
-                        .IsUnique();
-
-                    b.ToTable("RoutingRules", (string)null);
-                });
-
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.SlaPolicy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -812,6 +777,9 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
@@ -1081,33 +1049,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RoutingRule", b =>
-                {
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.Area", "Area")
-                        .WithMany()
-                        .HasForeignKey("AreaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.Department", "Department")
-                        .WithMany()
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.IssueType", "IssueType")
-                        .WithMany()
-                        .HasForeignKey("IssueTypeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Area");
-
-                    b.Navigation("Department");
-
-                    b.Navigation("IssueType");
-                });
-
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.SlaPolicy", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.IssueType", "IssueType")
@@ -1146,11 +1087,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("Updates");
 
                     b.Navigation("Upvotes");
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>
-                {
-                    b.Navigation("SlaPolicies");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>
