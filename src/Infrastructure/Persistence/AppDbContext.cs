@@ -24,6 +24,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<DepartmentMember> DepartmentMembers => Set<DepartmentMember>();
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
+    public DbSet<Issue> Issues => Set<Issue>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -50,6 +51,29 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany(u => u.RefreshTokens)
                   .HasForeignKey(rt => rt.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // 9. Issues (minimal mapping for nearby queries)
+        builder.Entity<Issue>(entity =>
+        {
+            entity.ToTable("Issues");
+            entity.HasKey(x => x.IssueId);
+            entity.Property(x => x.IssueId).ValueGeneratedOnAdd();
+
+            entity.Property(x => x.PublicCode).HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            entity.Property(x => x.Latitude).HasPrecision(9, 6);
+            entity.Property(x => x.Longitude).HasPrecision(9, 6);
+            entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
+            entity.Property(x => x.ReportedAt).HasColumnType("datetime2(0)");
+
+            entity.HasOne(x => x.IssueType).WithMany().HasForeignKey(x => x.IssueTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Priority).WithMany().HasForeignKey(x => x.PriorityId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Status).WithMany().HasForeignKey(x => x.StatusId).OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes to support nearby query
+            entity.HasIndex(x => x.IssueTypeId).HasDatabaseName("IX_Issues_IssueTypeId");
+            entity.HasIndex(x => new { x.Latitude, x.Longitude }).HasDatabaseName("IX_Issues_LatLon");
         });
 
         // 3. Areas

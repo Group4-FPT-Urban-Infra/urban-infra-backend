@@ -76,6 +76,7 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentService, DepartmentService>();
         services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
         services.AddScoped<ISlaPolicyService, SlaPolicyService>();
+        services.AddScoped<IIssueService, IssueService>();
 
         return services;
     }
