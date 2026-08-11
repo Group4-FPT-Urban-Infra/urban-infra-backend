@@ -48,6 +48,10 @@ public static class DependencyInjection
             {
                 options.RequireHttpsMetadata = false;
                 options.SaveToken = true;
+                // Tắt việc tự động đổi tên claim từ short ("role", "sub", "email")
+                // sang URI dài (ClaimTypes.Role, ClaimTypes.NameIdentifier, ...).
+                // Nhờ đó RoleClaimType = "role" hoạt động đúng với JWT được tạo ra.
+                options.MapInboundClaims = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -76,6 +80,7 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentService, DepartmentService>();
         services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
         services.AddScoped<ISlaPolicyService, SlaPolicyService>();
+        services.AddScoped<IUserManagementService, UserManagementService>();
         services.AddScoped<IIssueUpvoteService, IssueUpvoteService>();
 
         return services;
