@@ -1,48 +1,23 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace UrbanInfraSystem.Infrastructure.Migrations
 {
-    public partial class AddSlaPolicies : Migration
+    /// <inheritdoc />
+    public partial class AddSlaPoliciesAndPriorities : Migration
     {
+        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateTable(
-                name: "IssueTypes",
-                columns: table => new
-                {
-                    IssueTypeId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_IssueTypes", x => x.IssueTypeId);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "IssuePriorities",
-                columns: table => new
-                {
-                    PriorityId = table.Column<byte>(type: "tinyint", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_IssuePriorities", x => x.PriorityId);
-                });
-
             migrationBuilder.CreateTable(
                 name: "SlaPolicies",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     IssueTypeId = table.Column<int>(type: "int", nullable: false),
-                    PriorityId = table.Column<byte>(type: "tinyint", nullable: false),
+                    PriorityId = table.Column<int>(type: "int", nullable: false),
                     ResolutionMinutes = table.Column<int>(type: "int", nullable: false),
                     FirstResponseMinutes = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -54,6 +29,7 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SlaPolicies", x => x.Id);
+                    table.CheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0");
                     table.ForeignKey(
                         name: "FK_SlaPolicies_IssuePriorities_PriorityId",
                         column: x => x.PriorityId,
@@ -80,16 +56,11 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                 column: "PriorityId");
         }
 
+        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
                 name: "SlaPolicies");
-
-            migrationBuilder.DropTable(
-                name: "IssuePriorities");
-
-            migrationBuilder.DropTable(
-                name: "IssueTypes");
         }
     }
 }
