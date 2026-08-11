@@ -24,6 +24,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<DepartmentMember> DepartmentMembers => Set<DepartmentMember>();
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
+    public DbSet<IssueUpvote> IssueUpvotes => Set<IssueUpvote>();
+    public DbSet<Issue> Issues => Set<Issue>();
+    public DbSet<IssueAttachment> IssueAttachments => Set<IssueAttachment>();
+    public DbSet<IssueUpdate> IssueUpdates => Set<IssueUpdate>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -187,6 +191,131 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
 
             // Constraint kiểm tra thời gian dương
             entity.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0");
+        });
+
+        // 10. IssueUpvotes
+        builder.Entity<IssueUpvote>(entity =>
+        {
+            entity.ToTable("IssueUpvotes");
+            entity.HasKey(u => new { u.IssueId, u.UserId });
+
+            entity.Property(u => u.CreatedAt).HasColumnType("datetime2(0)");
+
+            entity.HasOne(u => u.Issue)
+                  .WithMany(i => i.Upvotes)
+                  .HasForeignKey(u => u.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(u => u.UserId).HasDatabaseName("IX_IssueUpvotes_UserId");
+        });
+
+        // 11. Issues
+        builder.Entity<Issue>(entity =>
+        {
+            entity.ToTable("Issues");
+            entity.HasKey(i => i.IssueId);
+            entity.Property(i => i.IssueId).ValueGeneratedOnAdd();
+
+            entity.Property(i => i.PublicCode).IsRequired().HasMaxLength(30);
+            entity.Property(i => i.ReporterId).IsRequired().HasMaxLength(450);
+            entity.Property(i => i.Title).IsRequired().HasMaxLength(200);
+            entity.Property(i => i.Description).IsRequired();
+            entity.Property(i => i.AddressText).HasMaxLength(500);
+            entity.Property(i => i.Latitude).HasPrecision(9, 6);
+            entity.Property(i => i.Longitude).HasPrecision(9, 6);
+            entity.Property(i => i.ReportedAt).HasColumnType("datetime2(0)");
+            entity.Property(i => i.ResolvedAt).HasColumnType("datetime2(0)");
+            entity.Property(i => i.ClosedAt).HasColumnType("datetime2(0)");
+
+            entity.HasIndex(i => i.PublicCode).IsUnique().HasDatabaseName("IX_Issues_PublicCode");
+            entity.HasIndex(i => i.ReporterId).HasDatabaseName("IX_Issues_ReporterId");
+            entity.HasIndex(i => i.StatusId).HasDatabaseName("IX_Issues_StatusId");
+            entity.HasIndex(i => i.ReportedAt).HasDatabaseName("IX_Issues_ReportedAt");
+            entity.HasIndex(i => i.Latitude).HasDatabaseName("IX_Issues_Latitude");
+            entity.HasIndex(i => i.Longitude).HasDatabaseName("IX_Issues_Longitude");
+
+            entity.HasOne(i => i.IssueType)
+                  .WithMany()
+                  .HasForeignKey(i => i.IssueTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(i => i.Area)
+                  .WithMany()
+                  .HasForeignKey(i => i.AreaId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(i => i.Priority)
+                  .WithMany()
+                  .HasForeignKey(i => i.PriorityId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(i => i.Status)
+                  .WithMany()
+                  .HasForeignKey(i => i.StatusId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 12. IssueAttachments
+        builder.Entity<IssueAttachment>(entity =>
+        {
+            entity.ToTable("IssueAttachments");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Id).ValueGeneratedOnAdd();
+
+            entity.Property(a => a.UploadedBy).IsRequired().HasMaxLength(450);
+            entity.Property(a => a.Kind).IsRequired().HasMaxLength(20);
+            entity.Property(a => a.FileUrl).IsRequired().HasMaxLength(1000);
+            entity.Property(a => a.ThumbnailUrl).HasMaxLength(1000);
+            entity.Property(a => a.MimeType).IsRequired().HasMaxLength(100);
+            entity.Property(a => a.CreatedAt).HasColumnType("datetime2(0)");
+
+            entity.HasIndex(a => a.IssueId).HasDatabaseName("IX_IssueAttachments_IssueId");
+            entity.HasIndex(a => a.UpdateId).HasDatabaseName("IX_IssueAttachments_UpdateId");
+
+            entity.HasOne(a => a.Issue)
+                  .WithMany(i => i.Attachments)
+                  .HasForeignKey(a => a.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<ApplicationUser>()
+                  .WithMany()
+                  .HasForeignKey(a => a.UploadedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 13. IssueUpdates
+        builder.Entity<IssueUpdate>(entity =>
+        {
+            entity.ToTable("IssueUpdates");
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Id).ValueGeneratedOnAdd();
+
+            entity.Property(u => u.CreatedBy).IsRequired().HasMaxLength(450);
+            entity.Property(u => u.Note).HasMaxLength(4000);
+            entity.Property(u => u.CreatedAt).HasColumnType("datetime2(0)");
+
+            entity.HasIndex(u => u.IssueId).HasDatabaseName("IX_IssueUpdates_IssueId");
+            entity.HasIndex(u => u.CreatedAt).HasDatabaseName("IX_IssueUpdates_CreatedAt");
+
+            entity.HasOne(u => u.Issue)
+                  .WithMany(i => i.Updates)
+                  .HasForeignKey(u => u.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(u => u.FromStatus)
+                  .WithMany()
+                  .HasForeignKey(u => u.FromStatusId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(u => u.ToStatus)
+                  .WithMany()
+                  .HasForeignKey(u => u.ToStatusId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<ApplicationUser>()
+                  .WithMany()
+                  .HasForeignKey(u => u.CreatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
