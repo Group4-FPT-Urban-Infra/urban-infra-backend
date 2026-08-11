@@ -23,7 +23,7 @@ public class CurrentUserService : ICurrentUserService
     public string? Email => User?.FindFirstValue(JwtRegisteredClaimNames.Email);
 
     public IReadOnlyList<string> Roles =>
-        User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList() ?? new List<string>();
+        User?.FindAll("role").Select(c => c.Value).ToList() ?? new List<string>();
 
     public bool IsInRole(string role) => User?.IsInRole(role) ?? false;
 }

@@ -6,6 +6,41 @@ cho Sprint 1 (Tuần 1 & 2).
 ## 1. Kiến trúc
 
 ```
+
+### 2026-08-10 - Add SLA Policy CRUD
+
+**Prompt:**
+
+Implement CRUD for SLA policies based on Issue Type + Priority.
+
+**Files changed:**
+
+- `src/Domain/Entities/IssueType.cs`
+- `src/Domain/Entities/IssuePriority.cs`
+- `src/Domain/Entities/SlaPolicy.cs`
+- `src/Application/DTOs/SlaPolicies/CreateSlaPolicyRequest.cs`
+- `src/Application/DTOs/SlaPolicies/UpdateSlaPolicyRequest.cs`
+- `src/Application/DTOs/SlaPolicies/SlaPolicyResponse.cs`
+- `src/Application/Interfaces/ISlaPolicyService.cs`
+- `src/Infrastructure/Services/SlaPolicyService.cs`
+- `src/Infrastructure/Persistence/AppDbContext.cs` (DbSet + entity config)
+- `src/Infrastructure/DependencyInjection.cs` (register service)
+- `src/API/Controllers/SlaPoliciesController.cs`
+- `src/Infrastructure/Migrations/20260810090000_AddSlaPolicies.cs`
+
+**Changes:**
+
+- Added SLA Policy entity and minimal IssueType / IssuePriority entities to support FK relations.
+- Added DTOs and service interface for SLA CRUD.
+- Implemented SlaPolicyService with business validation (existence, positive durations, firstResponse <= resolution, uniqueness).
+- Added EF Core configuration with unique index on (IssueTypeId, PriorityId) and soft-delete filtering.
+- Added migration to create IssueTypes, IssuePriorities and SlaPolicies tables.
+- Added Admin-only API controller for CRUD operations.
+
+**Status:**
+
+Code changed and saved.
+
 UrbanInfraSystem/
 ├── UrbanInfraSystem.sln
 ├── Dockerfile

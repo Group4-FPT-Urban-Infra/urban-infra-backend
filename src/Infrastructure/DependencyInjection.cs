@@ -8,7 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
-
+using UrbanInfraSystem.Infrastructure.Services;
 
 namespace UrbanInfraSystem.Infrastructure;
 
@@ -18,17 +18,19 @@ public static class DependencyInjection
     {
         // --- Persistence ---
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("DefaultConnection"),
+                x => x.UseNetTopologySuite()));
 
         // --- Identity ---
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
-            {
-                options.Password.RequiredLength = 6;
-                options.Password.RequireNonAlphanumeric = false;
-                options.Password.RequireUppercase = false;
-                options.User.RequireUniqueEmail = true;
-                options.SignIn.RequireConfirmedEmail = false; // có thể bật khi làm email verification
-            })
+        {
+            options.Password.RequiredLength = 6;
+            options.Password.RequireNonAlphanumeric = false;
+            options.Password.RequireUppercase = false;
+            options.User.RequireUniqueEmail = true;
+            options.SignIn.RequireConfirmedEmail = false; // có thể bật khi làm email verification
+        })
             .AddEntityFrameworkStores<AppDbContext>()
             .AddDefaultTokenProviders();
 
@@ -38,15 +40,18 @@ public static class DependencyInjection
         var jwtSettings = jwtSection.Get<JwtSettings>()!;
 
         services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
+        {
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+        })
             .AddJwtBearer(options =>
             {
-                options.RequireHttpsMetadata = true;
+                options.RequireHttpsMetadata = false;
                 options.SaveToken = true;
-                options.MapInboundClaims = false; // giữ nguyên tên claim gốc (sub, email...)
+                // Tắt việc tự động đổi tên claim từ short ("role", "sub", "email")
+                // sang URI dài (ClaimTypes.Role, ClaimTypes.NameIdentifier, ...).
+                // Nhờ đó RoleClaimType = "role" hoạt động đúng với JWT được tạo ra.
+                options.MapInboundClaims = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -56,6 +61,7 @@ public static class DependencyInjection
                     ValidIssuer = jwtSettings.Issuer,
                     ValidAudience = jwtSettings.Audience,
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
+                    RoleClaimType = "role",  // Map "role" claim từ JWT thành ClaimTypes.Role
                     ClockSkew = TimeSpan.FromMinutes(1)
                 };
             });
@@ -67,6 +73,15 @@ public static class DependencyInjection
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAreaService, AreaService>();
+        services.AddScoped<IIssueTypeService, IssueTypeService>();
+        services.AddScoped<IIssuePriorityService, IssuePriorityService>();
+        services.AddScoped<IIssueStatusService, IssueStatusService>();
+        services.AddScoped<IDepartmentService, DepartmentService>();
+        services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
+        services.AddScoped<ISlaPolicyService, SlaPolicyService>();
+        services.AddScoped<IUserManagementService, UserManagementService>();
+        services.AddScoped<IRoutingRuleService, RoutingRuleService>();
 
         return services;
     }

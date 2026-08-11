@@ -1,0 +1,350 @@
+openapi: 3.0.3
+info:
+  title: Urban Infrastructure Issue Reporting API - Auth Module
+  version: 1.0.0
+  description: |
+    API Swagger specification cho các chức năng Xác thực (Authentication) thuộc Hệ thống Báo cáo & Xử lý Sự cố Hạ tầng Đô thị.
+    Bao gồm các endpoint Đăng ký, Đăng nhập, và Làm mới Token (Refresh Token).
+
+servers:
+  - url: http://localhost:5000
+    description: Local Development Server (HTTP)
+  - url: https://localhost:5001
+    description: Local Development Server (HTTPS)
+
+paths:
+  /api/auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Đăng ký tài khoản công dân (Citizen)
+      description: |
+        Endpoint công khai (Public, AllowAnonymous).
+        Mặc định mọi tài khoản đăng ký trực tiếp qua endpoint này sẽ được gán quyền `Citizen`.
+        Các quyền quản trị khác (`Admin`, `DepartmentStaff`) được cấp riêng bởi Admin qua API quản trị.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Đăng ký thành công. Trả về JWT Access Token, Refresh Token và thông tin người dùng.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                success: true
+                message: null
+                accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                refreshToken: "c3d7f9a2-4b1e-4d5c-9a8b-7e6f5d4c3b2a"
+                accessTokenExpiresAtUtc: "2026-08-05T14:30:00Z"
+                user:
+                  id: "usr-8f3a1b2c"
+                  fullName: "Nguyễn Văn A"
+                  email: "nguyenvana@example.com"
+                  roles:
+                    - "Citizen"
+        '400':
+          description: Đăng ký thất bại do email đã tồn tại, mật khẩu không hợp lệ, hoặc dữ liệu đầu vào không hợp lệ.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AuthResponse'
+                  - $ref: '#/components/schemas/ValidationErrorResponse'
+              examples:
+                EmailExists:
+                  summary: Email đã được sử dụng
+                  value:
+                    success: false
+                    message: "Email đã được sử dụng."
+                    accessToken: null
+                    refreshToken: null
+                    accessTokenExpiresAtUtc: null
+                    user: null
+                ValidationError:
+                  summary: Lỗi Validation dữ liệu đầu vào
+                  value:
+                    type: "https://tools.ietf.org/html/rfc7231#section-6.5.1"
+                    title: "One or more validation errors occurred."
+                    status: 400
+                    errors:
+                      FullName:
+                        - "The FullName field is required."
+                      Email:
+                        - "The Email field is not a valid e-mail address."
+
+  /api/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Đăng nhập hệ thống
+      description: |
+        Endpoint công khai (Public, AllowAnonymous).
+        Xác thực bằng Email và Password, trả về Access Token (ngắn hạn) và Refresh Token (dài hạn).
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Đăng nhập thành công. Trả về Access Token, Refresh Token và thông tin người dùng.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                success: true
+                message: null
+                accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                refreshToken: "c3d7f9a2-4b1e-4d5c-9a8b-7e6f5d4c3b2a"
+                accessTokenExpiresAtUtc: "2026-08-05T14:30:00Z"
+                user:
+                  id: "usr-8f3a1b2c"
+                  fullName: "Nguyễn Văn A"
+                  email: "nguyenvana@example.com"
+                  roles:
+                    - "Citizen"
+        '401':
+          description: Đăng nhập thất bại do email/mật khẩu sai hoặc tài khoản bị khóa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                success: false
+                message: "Email hoặc mật khẩu không đúng."
+                accessToken: null
+                refreshToken: null
+                accessTokenExpiresAtUtc: null
+                user: null
+        '400':
+          description: Dữ liệu yêu cầu không đầy đủ hoặc sai định dạng.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /api/auth/refresh-token:
+    post:
+      tags:
+        - Auth
+      summary: Cấp lại Access Token bằng Refresh Token
+      description: |
+        Endpoint công khai (Public, AllowAnonymous).
+        Sử dụng Access Token cũ (đã hết hạn) cùng Refresh Token hợp lệ để lấy Access Token và Refresh Token mới (Token Rotation).
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Cấp lại token thành công. Trả về cặp Access Token và Refresh Token mới.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                success: true
+                message: null
+                accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                refreshToken: "e5f6g7h8-i9j0-1k2l-3m4n-5o6p7q8r9s0t"
+                accessTokenExpiresAtUtc: "2026-08-05T15:30:00Z"
+                user:
+                  id: "usr-8f3a1b2c"
+                  fullName: "Nguyễn Văn A"
+                  email: "nguyenvana@example.com"
+                  roles:
+                    - "Citizen"
+        '401':
+          description: Token không hợp lệ, đã hết hạn, hoặc bị thu hồi.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              examples:
+                InvalidAccessToken:
+                  summary: Access Token không hợp lệ
+                  value:
+                    success: false
+                    message: "Access token không hợp lệ."
+                    accessToken: null
+                    refreshToken: null
+                    accessTokenExpiresAtUtc: null
+                    user: null
+                InvalidRefreshToken:
+                  summary: Refresh Token không hợp lệ hoặc đã hết hạn
+                  value:
+                    success: false
+                    message: "Refresh token không hợp lệ hoặc đã hết hạn."
+                    accessToken: null
+                    refreshToken: null
+                    accessTokenExpiresAtUtc: null
+                    user: null
+        '400':
+          description: Dữ liệu yêu cầu không đầy đủ (thiếu AccessToken hoặc RefreshToken).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+components:
+  securitySchemes:
+    Bearer:
+      type: apiKey
+      name: Authorization
+      in: header
+      description: 'Nhập theo định dạng: Bearer {access_token}'
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - fullName
+        - email
+        - phoneNumber
+        - password
+      properties:
+        fullName:
+          type: string
+          maxLength: 100
+          description: Họ và tên đầy đủ của người đăng ký
+          example: "Nguyễn Văn A"
+        email:
+          type: string
+          format: email
+          description: Địa chỉ email đăng ký (dùng làm tên đăng nhập)
+          example: "nguyenvana@example.com"
+        phoneNumber:
+          type: string
+          description: Số điện thoại liên hệ
+          example: "0912345678"
+        password:
+          type: string
+          format: password
+          minLength: 6
+          description: Mật khẩu (tối thiểu 6 ký tự)
+          example: "Password123!"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email tài khoản
+          example: "nguyenvana@example.com"
+        password:
+          type: string
+          format: password
+          description: Mật khẩu
+          example: "Password123!"
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+      properties:
+        accessToken:
+          type: string
+          description: Access token hiện tại (có thể đã hết hạn)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          description: Refresh token dài hạn đang còn hiệu lực
+          example: "c3d7f9a2-4b1e-4d5c-9a8b-7e6f5d4c3b2a"
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Trạng thái thành công hay thất bại của tác vụ
+          example: true
+        message:
+          type: string
+          nullable: true
+          description: Thông báo chi tiết hoặc lý do thất bại (nếu có)
+          example: null
+        accessToken:
+          type: string
+          nullable: true
+          description: JWT Access Token dùng để xác thực các request tiếp theo
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          nullable: true
+          description: Refresh token dùng để lấy access token mới khi hết hạn
+          example: "c3d7f9a2-4b1e-4d5c-9a8b-7e6f5d4c3b2a"
+        accessTokenExpiresAtUtc:
+          type: string
+          format: date-time
+          nullable: true
+          description: Thời gian hết hạn của Access Token tính theo định dạng UTC ISO 8601
+          example: "2026-08-05T14:30:00Z"
+        user:
+          $ref: '#/components/schemas/UserDto'
+          nullable: true
+
+    UserDto:
+      type: object
+      properties:
+        id:
+          type: string
+          description: GUID / Unique Identifier của người dùng
+          example: "usr-8f3a1b2c"
+        fullName:
+          type: string
+          description: Họ tên người dùng
+          example: "Nguyễn Văn A"
+        email:
+          type: string
+          format: email
+          description: Email người dùng
+          example: "nguyenvana@example.com"
+        roles:
+          type: array
+          description: Danh sách vai trò (roles) của người dùng
+          items:
+            type: string
+          example:
+            - "Citizen"
+
+    ValidationErrorResponse:
+      type: object
+      description: Định dạng phản hồi lỗi validation mặc định của ASP.NET Core (ProblemDetails)
+      properties:
+        type:
+          type: string
+          example: "https://tools.ietf.org/html/rfc7231#section-6.5.1"
+        title:
+          type: string
+          example: "One or more validation errors occurred."
+        status:
+          type: integer
+          example: 400
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            Email:
+              - "The Email field is required."
+            Password:
+              - "The field Password must be a string with a minimum length of 6."

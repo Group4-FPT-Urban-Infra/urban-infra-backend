@@ -67,8 +67,25 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             userId = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value,
-            email = User.FindFirst(JwtRegisteredClaimNames.Email)?.Value,
-            roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
+            email  = User.FindFirst(JwtRegisteredClaimNames.Email)?.Value,
+            roles  = User.FindAll("role").Select(c => c.Value)
+        });
+    }
+
+    /// <summary>
+    /// Debug: Dump toàn bộ claims server đọc được từ JWT.
+    /// Dùng để kiểm tra claim type và giá trị sau khi MapInboundClaims = false.
+    /// </summary>
+    [HttpGet("claims")]
+    [Authorize]
+    public IActionResult Claims()
+    {
+        var claims = User.Claims.Select(c => new { type = c.Type, value = c.Value });
+        return Ok(new
+        {
+            isAuthenticated = User.Identity?.IsAuthenticated,
+            authType        = User.Identity?.AuthenticationType,
+            claims
         });
     }
 }
