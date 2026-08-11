@@ -46,6 +46,9 @@ public class DepartmentResponse
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public string? ManagerId { get; set; }
+    public string? ManagerFullName { get; set; }
+    public string? ManagerEmail { get; set; }
     public List<DepartmentResponse> ChildDepartments { get; set; } = new();
 }
 
