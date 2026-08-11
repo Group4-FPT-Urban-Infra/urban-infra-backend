@@ -59,8 +59,7 @@ public class DepartmentMemberService : IDepartmentMemberService
             throw new InvalidOperationException("Người dùng phải có vai trò DepartmentStaff trước khi được gán vào đơn vị.");
 
         var member = await _context.DepartmentMembers.FindAsync([departmentId, request.UserId], cancellationToken);
-        if (member is not null && member.IsActive)
-            throw new InvalidOperationException("Cán bộ đã thuộc đơn vị này.");
+        // If already active, we just update their role instead of throwing an exception.
 
         if (member is null)
         {

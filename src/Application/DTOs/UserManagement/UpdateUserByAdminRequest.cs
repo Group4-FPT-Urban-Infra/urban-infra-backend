@@ -25,5 +25,5 @@ public class UpdateUserByAdminRequest
     /// Phòng ban phụ trách mới — chỉ có ý nghĩa khi Role = "DepartmentStaff".
     /// Truyền null để xóa liên kết phòng ban.
     /// </summary>
-    public Guid? DepartmentId { get; set; }
+    public int? DepartmentId { get; set; }
 }
