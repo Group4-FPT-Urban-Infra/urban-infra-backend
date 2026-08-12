@@ -532,9 +532,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -1146,11 +1143,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("Updates");
 
                     b.Navigation("Upvotes");
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>
-                {
-                    b.Navigation("SlaPolicies");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>

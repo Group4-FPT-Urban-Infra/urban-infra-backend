@@ -25,11 +25,11 @@ public class SlaPoliciesController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType(typeof(IReadOnlyList<SlaPolicyResponse>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<SlaPolicyResponse>>> GetAll(CancellationToken ct)
+    [ProducesResponseType(typeof(UrbanInfraSystem.Application.DTOs.UserManagement.PagedResult<SlaPolicyResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<UrbanInfraSystem.Application.DTOs.UserManagement.PagedResult<SlaPolicyResponse>>> GetAll([FromQuery] SearchSlaPoliciesRequest request, CancellationToken ct)
     {
-        var list = await _service.GetAllAsync(ct);
-        return Ok(list);
+        var result = await _service.GetAllAsync(request, ct);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
