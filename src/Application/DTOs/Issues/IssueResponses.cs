@@ -50,7 +50,23 @@ public class IssueDetailResponse : IssueSummaryResponse
     public DateTime? ResolvedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public IssueSlaResponse? Sla { get; set; }
     public IReadOnlyList<IssueAttachmentResponse> Attachments { get; set; } = [];
+}
+
+public class IssueSlaResponse
+{
+    public long Id { get; set; }
+    public long IssueId { get; set; }
+    public Guid? SlaPolicyId { get; set; }
+    public int FirstResponseMinutes { get; set; }
+    public int ResolutionMinutes { get; set; }
+    public DateTime? FirstResponseDueAt { get; set; }
+    public DateTime ResolutionDueAt { get; set; }
+    public DateTime? FirstRespondedAt { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public bool IsFirstResponseBreached { get; set; }
+    public bool IsResolutionBreached { get; set; }
 }
 
 public class DuplicateIssueResponse

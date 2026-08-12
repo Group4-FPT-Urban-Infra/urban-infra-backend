@@ -86,6 +86,9 @@ public static class DependencyInjection
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
         services.AddScoped<IIssueAssignmentService, IssueAssignmentService>();
 
+        // --- Background Hosted Services ---
+        services.AddHostedService<UrbanInfraSystem.Infrastructure.BackgroundServices.SlaCheckBackgroundService>();
+
         return services;
     }
 }

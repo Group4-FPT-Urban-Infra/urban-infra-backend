@@ -149,6 +149,27 @@ public class IssueService : IIssueService
         _context.Issues.Add(issue);
         await _context.SaveChangesAsync(cancellationToken);
 
+        // 8. Tự động tra cứu SLA Policy theo type + priority và tạo bản ghi IssueSla
+        var slaPolicy = await _context.SlaPolicies
+            .FirstOrDefaultAsync(s => s.IssueTypeId == issue.IssueTypeId && s.PriorityId == issue.PriorityId, cancellationToken);
+
+        int firstResponseMinutes = slaPolicy?.FirstResponseMinutes ?? 120;
+        int resolutionMinutes = slaPolicy?.ResolutionMinutes ?? 1440;
+
+        var issueSla = new IssueSla
+        {
+            IssueId = issue.IssueId,
+            SlaPolicyId = slaPolicy?.Id,
+            FirstResponseMinutes = firstResponseMinutes,
+            ResolutionMinutes = resolutionMinutes,
+            FirstResponseDueAt = issue.ReportedAt.AddMinutes(firstResponseMinutes),
+            ResolutionDueAt = issue.ReportedAt.AddMinutes(resolutionMinutes),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.IssueSlas.Add(issueSla);
+        await _context.SaveChangesAsync(cancellationToken);
+
         // 8. Lưu đính kèm hình ảnh (nếu có)
         if (request.Images != null && request.Images.Count > 0)
         {
@@ -268,6 +289,7 @@ public class IssueService : IIssueService
             .Include(i => i.Priority)
             .Include(i => i.Status)
             .Include(i => i.Attachments)
+            .Include(i => i.Sla)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken);
 
@@ -661,6 +683,20 @@ public class IssueService : IIssueService
             ResolvedAt = issue.ResolvedAt,
             ClosedAt = issue.ClosedAt,
             UpdatedAt = issue.ReportedAt,
+            Sla = issue.Sla != null ? new IssueSlaResponse
+            {
+                Id = issue.Sla.Id,
+                IssueId = issue.Sla.IssueId,
+                SlaPolicyId = issue.Sla.SlaPolicyId,
+                FirstResponseMinutes = issue.Sla.FirstResponseMinutes,
+                ResolutionMinutes = issue.Sla.ResolutionMinutes,
+                FirstResponseDueAt = issue.Sla.FirstResponseDueAt,
+                ResolutionDueAt = issue.Sla.ResolutionDueAt,
+                FirstRespondedAt = issue.Sla.FirstRespondedAt,
+                ResolvedAt = issue.Sla.ResolvedAt,
+                IsFirstResponseBreached = issue.Sla.IsFirstResponseBreached,
+                IsResolutionBreached = issue.Sla.IsResolutionBreached
+            } : null,
             Attachments = issue.Attachments.Select(MapAttachment).ToList()
         };
     }

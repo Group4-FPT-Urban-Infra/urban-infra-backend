@@ -519,6 +519,58 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.ToTable("IssuePriorities", (string)null);
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueSla", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<DateTime?>("FirstRespondedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<DateTime?>("FirstResponseDueAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("FirstResponseMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsFirstResponseBreached")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsResolutionBreached")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ResolutionDueAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("ResolutionMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<Guid?>("SlaPolicyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IssueSlas_IssueId");
+
+                    b.HasIndex("SlaPolicyId");
+
+                    b.ToTable("IssueSlas", (string)null);
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueStatus", b =>
                 {
                     b.Property<int>("StatusId")
@@ -1098,6 +1150,24 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("Update");
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueSla", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
+                        .WithOne("Sla")
+                        .HasForeignKey("UrbanInfraSystem.Domain.Entities.IssueSla", "IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.SlaPolicy", "SlaPolicy")
+                        .WithMany()
+                        .HasForeignKey("SlaPolicyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("SlaPolicy");
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.IssueType", "ParentIssueType")
@@ -1223,6 +1293,8 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("Assignments");
 
                     b.Navigation("Attachments");
+
+                    b.Navigation("Sla");
 
                     b.Navigation("Updates");
 
