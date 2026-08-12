@@ -1,11 +1,15 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using UrbanInfraSystem.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace UrbanInfraSystem.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20260812101600_AddIssueSlasTable")]
     public partial class AddIssueSlasTable : Migration
     {
         /// <inheritdoc />
