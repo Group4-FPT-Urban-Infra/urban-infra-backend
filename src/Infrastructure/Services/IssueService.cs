@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using UrbanInfraSystem.Application.DTOs.Dashboard;
 using UrbanInfraSystem.Application.DTOs.Issues;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Entities;
+using UrbanInfraSystem.Domain.Enums;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Services;
@@ -28,6 +30,40 @@ public class IssueService : IIssueService
         _context = context;
         _environment = environment;
         _logger = logger;
+    }
+
+    public async Task<ApiResponse<DashboardStatsResponse>> GetDashboardStatsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var resolvedStatusCodes = new[] { "RESOLVED", "CLOSED", "REJECTED" };
+
+        var weekStart = DateTime.UtcNow.Date.AddDays(-(int)DateTime.UtcNow.DayOfWeek);
+
+        var activeIssuesCount = await _context.Issues
+            .Where(i => i.IsPublic && !resolvedStatusCodes.Contains(i.Status.StatusCode))
+            .CountAsync(cancellationToken);
+
+        var resolvedThisWeekCount = await _context.Issues
+            .Where(i => i.IsPublic && i.ResolvedAt.HasValue && i.ResolvedAt >= weekStart)
+            .CountAsync(cancellationToken);
+
+        var citizenUsersCount = await _context.Users
+            .Where(u => _context.UserRoles
+                .Where(ur => _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == Roles.Citizen))
+                .Select(ur => ur.UserId)
+                .Contains(u.Id))
+            .CountAsync(cancellationToken);
+
+        return new ApiResponse<DashboardStatsResponse>
+        {
+            Success = true,
+            Data = new DashboardStatsResponse
+            {
+                ActiveIssuesCount = activeIssuesCount,
+                ResolvedThisWeekCount = resolvedThisWeekCount,
+                CitizenUsersCount = citizenUsersCount
+            }
+        };
     }
 
     public async Task<ApiResponse<IssueDetailResponse>> CreateIssueAsync(
@@ -269,6 +305,7 @@ public class IssueService : IIssueService
         CancellationToken cancellationToken = default)
     {
         var query = _context.Issues
+            .IgnoreQueryFilters()
             .Include(i => i.IssueType)
             .Include(i => i.Area)
             .Include(i => i.Priority)
@@ -372,6 +409,7 @@ public class IssueService : IIssueService
         CancellationToken cancellationToken = default)
     {
         var query = _context.Issues
+            .IgnoreQueryFilters()
             .Include(i => i.IssueType)
             .Include(i => i.Area)
             .Include(i => i.Priority)
@@ -430,15 +468,58 @@ public class IssueService : IIssueService
     {
         var fromDate = DateTime.UtcNow.AddDays(-request.WithinDays);
 
-        var issues = await _context.Issues
+        // Debug: log the filter parameters
+        _logger.LogDebug("FindNearby: Lat={Lat}, Lng={Lng}, Radius={Radius}, IssueType={IssueTypeId}, FromDate={FromDate}",
+            request.Latitude, request.Longitude, request.RadiusMeters, request.IssueTypeId, fromDate);
+
+        var query = _context.Issues
+            .IgnoreQueryFilters()
             .Include(i => i.IssueType)
             .Include(i => i.Area)
             .Include(i => i.Priority)
             .Include(i => i.Status)
             .Include(i => i.Attachments)
-            .Where(i => i.IssueTypeId == request.IssueTypeId && i.ReportedAt >= fromDate && i.IsPublic)
+            .Where(i => i.ReportedAt >= fromDate && i.IsPublic);
+
+        // Apply date range filter if specified
+        if (request.FromDate.HasValue)
+        {
+            query = query.Where(i => i.ReportedAt >= request.FromDate.Value);
+        }
+
+        if (request.ToDate.HasValue)
+        {
+            query = query.Where(i => i.ReportedAt <= request.ToDate.Value);
+        }
+
+        // Apply status codes filter if specified
+        if (request.StatusCodes != null && request.StatusCodes.Length > 0)
+        {
+            var codes = request.StatusCodes.Select(c => c.ToUpper()).ToList();
+            query = query.Where(i => codes.Contains(i.Status.StatusCode.ToUpper()));
+        }
+
+        // Apply priority codes filter if specified
+        if (request.PriorityCodes != null && request.PriorityCodes.Length > 0)
+        {
+            var codes = request.PriorityCodes.Select(c => c.ToUpper()).ToList();
+            query = query.Where(i => codes.Contains(i.Priority.PriorityCode.ToUpper()));
+        }
+
+        // Debug: count before type filter
+        var totalCount = await query.CountAsync(cancellationToken);
+        _logger.LogDebug("Issues matching date+IsPublic: {Count}", totalCount);
+
+        if (request.IssueTypeId.HasValue)
+        {
+            query = query.Where(i => i.IssueTypeId == request.IssueTypeId.Value);
+        }
+
+        var issues = await query
             .AsNoTracking()
             .ToListAsync(cancellationToken);
+
+        _logger.LogDebug("Issues after type filter: {Count}", issues.Count);
 
         var nearbyList = new List<NearbyIssueResponse>();
 
@@ -447,6 +528,9 @@ public class IssueService : IIssueService
             var distance = CalculateHaversineDistance(
                 (double)request.Latitude, (double)request.Longitude,
                 (double)issue.Latitude, (double)issue.Longitude);
+
+            _logger.LogDebug("Issue {Id} ({Title}): distance={Distance}m, within radius={Within}",
+                issue.IssueId, issue.Title, distance, distance <= request.RadiusMeters ? "YES" : "NO");
 
             if (distance <= request.RadiusMeters)
             {
@@ -482,6 +566,8 @@ public class IssueService : IIssueService
             .OrderBy(n => n.DistanceMeters)
             .Take(request.Limit)
             .ToList();
+
+        _logger.LogInformation("FindNearby: returning {Count} issues within radius", result.Count);
 
         return new ApiResponse<IReadOnlyList<NearbyIssueResponse>>
         {

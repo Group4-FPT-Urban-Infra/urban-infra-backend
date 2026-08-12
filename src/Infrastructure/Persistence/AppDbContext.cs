@@ -191,7 +191,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasQueryFilter(s => !s.IsDeleted);
 
             // Constraint kiểm tra thời gian dương
-            entity.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0");
+            // Configure this using ToTable(t => t.HasCheckConstraint()) instead.
+            entity.ToTable(t => t.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0"));
         });
 
         // 10. IssueUpvotes
