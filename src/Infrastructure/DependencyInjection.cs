@@ -9,6 +9,7 @@ using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
 using UrbanInfraSystem.Infrastructure.Services;
+using UrbanInfraSystem.Infrastructure.Services.Elaboration;
 
 namespace UrbanInfraSystem.Infrastructure;
 
@@ -80,8 +81,17 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentService, DepartmentService>();
         services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
         services.AddScoped<ISlaPolicyService, SlaPolicyService>();
+
         services.AddScoped<IUserManagementService, UserManagementService>();
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
+
+        services.AddScoped<IIssueService, IssueService>();
+        services.AddScoped<IEscalationRuleService, EscalationRuleService>();
+        services.AddScoped<IEscalationEventService, EscalationEventService>();
+        // Escalation processor and background worker
+        services.AddScoped<EscalationProcessor>();
+        services.AddHostedService<EscalationBackgroundService>();
+
 
         return services;
     }

@@ -45,10 +45,17 @@ public class IssuesController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<NearbyIssueResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status501NotImplemented)]
-    public ActionResult<ApiResponse<IReadOnlyList<NearbyIssueResponse>>> FindNearby(
-        [FromQuery] FindNearbyIssuesRequest request)
-        => ContractOnly();
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<NearbyIssueResponse>>>> FindNearby(
+        [FromQuery] FindNearbyIssuesRequest request,
+        [FromServices] UrbanInfraSystem.Application.Interfaces.IIssueService issueService,
+        CancellationToken ct = default)
+    {
+        var result = await issueService.FindNearbyAsync(request, ct);
+        if (!result.Success)
+            return BadRequest(new { message = result.Message });
+
+        return Ok(result);
+    }
 
     /// <summary>Lấy danh sách báo cáo của công dân đang đăng nhập.</summary>
     [HttpGet("mine")]

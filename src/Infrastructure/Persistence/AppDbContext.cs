@@ -24,7 +24,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<DepartmentMember> DepartmentMembers => Set<DepartmentMember>();
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
+
     public DbSet<RoutingRule> RoutingRules => Set<RoutingRule>();
+
+    public DbSet<Issue> Issues => Set<Issue>();
+    public DbSet<EscalationRule> EscalationRules => Set<EscalationRule>(); // Đã thêm DbSet để sửa lỗi CS1061
+    public DbSet<EscalationEvent> EscalationEvents => Set<EscalationEvent>();
+    public DbSet<IssueSla> IssueSlas => Set<IssueSla>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -71,7 +77,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // 4. IssueTypes (Giữ lại cấu hình phân cấp chi tiết của dev)
+        // 4. IssueTypes
         builder.Entity<IssueType>(entity =>
         {
             entity.ToTable("IssueTypes");
@@ -159,10 +165,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // 9. SlaPolicies (Gộp cấu hình tính năng SLA của bạn)
+        // 9. SlaPolicies
         builder.Entity<SlaPolicy>(entity =>
         {
-            entity.ToTable("SlaPolicies");
+            entity.ToTable(t =>
+            {
+                // Sử dụng ToTable để cấu hình CheckConstraint, giải quyết warning CS0618 trên .NET 10
+                t.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0");
+            });
+
             entity.HasKey(s => s.Id);
 
             entity.Property(s => s.ResolutionMinutes).IsRequired();
@@ -180,14 +191,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .OnDelete(DeleteBehavior.Restrict)
                   .IsRequired();
 
-            // Đảm bảo mỗi cặp IssueType + Priority chỉ có 1 chính sách SLA
             entity.HasIndex(s => new { s.IssueTypeId, s.PriorityId }).IsUnique();
 
-            // Lọc các bản ghi xóa mềm (Soft-delete filter)
             entity.HasQueryFilter(s => !s.IsDeleted);
-
-            // Constraint kiểm tra thời gian dương
-            entity.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0");
         });
 
         // 10. RoutingRules
@@ -213,6 +219,103 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany()
                   .HasForeignKey(x => x.DepartmentId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 11. Issues
+        builder.Entity<Issue>(entity =>
+        {
+            entity.ToTable("Issues");
+            entity.HasKey(x => x.IssueId);
+            entity.Property(x => x.IssueId).ValueGeneratedOnAdd();
+
+            entity.Property(x => x.PublicCode).HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            entity.Property(x => x.Latitude).HasPrecision(9, 6);
+            entity.Property(x => x.Longitude).HasPrecision(9, 6);
+            entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
+            entity.Property(x => x.ReportedAt).HasColumnType("datetime2(0)");
+
+            entity.HasOne(x => x.IssueType).WithMany().HasForeignKey(x => x.IssueTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Priority).WithMany().HasForeignKey(x => x.PriorityId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Status).WithMany().HasForeignKey(x => x.StatusId).OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(x => x.IssueTypeId).HasDatabaseName("IX_Issues_IssueTypeId");
+            entity.HasIndex(x => new { x.Latitude, x.Longitude }).HasDatabaseName("IX_Issues_LatLon");
+        });
+
+        // 12. EscalationRules
+        builder.Entity<EscalationRule>(entity =>
+        {
+            entity.ToTable("EscalationRules");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.SlaPolicyId).IsRequired();
+            entity.Property(x => x.OverdueMinutes).IsRequired();
+            entity.Property(x => x.TargetRoleName).HasMaxLength(100).IsUnicode(false);
+            entity.Property(x => x.EscalationLevel).IsRequired();
+            entity.Property(x => x.NotificationTitle).HasMaxLength(250);
+            entity.Property(x => x.NotificationTemplate).HasMaxLength(4000);
+            entity.Property(x => x.IsActive).IsRequired();
+
+            entity.HasOne(x => x.SlaPolicy)
+                  .WithMany()
+                  .HasForeignKey(x => x.SlaPolicyId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .IsRequired();
+
+            entity.HasOne(x => x.TargetDepartment)
+                  .WithMany()
+                  .HasForeignKey(x => x.TargetDepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(x => new { x.SlaPolicyId, x.EscalationLevel, x.OverdueMinutes, x.TargetDepartmentId, x.TargetRoleName })
+                  .IsUnique()
+                  .HasDatabaseName("UX_EscalationRules_UniqueCombination");
+
+            entity.HasQueryFilter(x => !x.IsDeleted);
+        });
+
+        // 13. EscalationEvents
+        builder.Entity<EscalationEvent>(entity =>
+        {
+            entity.ToTable("EscalationEvents");
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.IssueId).IsRequired();
+            entity.Property(x => x.EscalationRuleId);
+            entity.Property(x => x.TargetDepartmentId);
+            entity.Property(x => x.TargetUserId).HasMaxLength(450);
+            entity.Property(x => x.TriggeredAt).IsRequired();
+            entity.Property(x => x.AcknowledgedAt);
+            entity.Property(x => x.AcknowledgedBy).HasMaxLength(450);
+            entity.Property(x => x.EventStatus).HasMaxLength(50).IsUnicode(false);
+            entity.Property(x => x.Note).HasMaxLength(1000);
+
+            entity.HasOne(x => x.Issue).WithMany().HasForeignKey(x => x.IssueId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.EscalationRule).WithMany().HasForeignKey(x => x.EscalationRuleId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.TargetDepartment).WithMany().HasForeignKey(x => x.TargetDepartmentId).OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(x => x.IssueId).HasDatabaseName("IX_EscalationEvents_IssueId");
+            entity.HasIndex(x => x.TargetDepartmentId).HasDatabaseName("IX_EscalationEvents_TargetDepartmentId");
+            entity.HasQueryFilter(x => !x.IsDeleted);
+        });
+
+        // 14. IssueSlas
+        builder.Entity<IssueSla>(entity =>
+        {
+            entity.ToTable("IssueSlas");
+            entity.HasKey(x => x.IssueSlaId);
+
+            entity.Property(x => x.IssueSlaId).ValueGeneratedOnAdd();
+            entity.Property(x => x.IssueId).IsRequired();
+            entity.Property(x => x.SlaPolicyId).IsRequired();
+            entity.Property(x => x.ResolutionDueAtUtc).IsRequired();
+            entity.Property(x => x.IsCompleted).IsRequired();
+
+            entity.HasOne(x => x.Issue).WithMany().HasForeignKey(x => x.IssueId).OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => x.IssueId).HasDatabaseName("IX_IssueSlas_IssueId");
+            entity.HasIndex(x => x.SlaPolicyId).HasDatabaseName("IX_IssueSlas_SlaPolicyId");
         });
     }
 }
