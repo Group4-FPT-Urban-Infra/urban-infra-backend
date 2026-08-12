@@ -1153,11 +1153,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("SlaPolicies");
                 });
 
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>
-                {
-                    b.Navigation("SlaPolicies");
-                });
-
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
                 {
                     b.Navigation("SlaPolicies");
