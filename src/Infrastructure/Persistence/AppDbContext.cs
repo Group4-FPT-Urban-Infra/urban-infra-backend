@@ -29,6 +29,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Issue> Issues => Set<Issue>();
     public DbSet<IssueAttachment> IssueAttachments => Set<IssueAttachment>();
     public DbSet<IssueUpdate> IssueUpdates => Set<IssueUpdate>();
+    public DbSet<IssueSla> IssueSlas => Set<IssueSla>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -342,6 +343,32 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany()
                   .HasForeignKey(x => x.DepartmentId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 14. IssueSlas
+        builder.Entity<IssueSla>(entity =>
+        {
+            entity.ToTable("IssueSlas");
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Id).ValueGeneratedOnAdd();
+
+            entity.Property(s => s.FirstResponseDueAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.ResolutionDueAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.FirstRespondedAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.ResolvedAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.CreatedAt).HasColumnType("datetime2(0)");
+
+            entity.HasIndex(s => s.IssueId).IsUnique().HasDatabaseName("IX_IssueSlas_IssueId");
+
+            entity.HasOne(s => s.Issue)
+                  .WithOne(i => i.Sla)
+                  .HasForeignKey<IssueSla>(s => s.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(s => s.SlaPolicy)
+                  .WithMany()
+                  .HasForeignKey(s => s.SlaPolicyId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

@@ -84,4 +84,7 @@ public class Issue
 
     /// <summary>Lịch sử cập nhật trạng thái.</summary>
     public ICollection<IssueUpdate> Updates { get; set; } = new List<IssueUpdate>();
+
+    /// <summary>Thông tin SLA của sự cố.</summary>
+    public IssueSla? Sla { get; set; }
 }
