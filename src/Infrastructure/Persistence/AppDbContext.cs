@@ -29,6 +29,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Issue> Issues => Set<Issue>();
     public DbSet<IssueAttachment> IssueAttachments => Set<IssueAttachment>();
     public DbSet<IssueUpdate> IssueUpdates => Set<IssueUpdate>();
+    public DbSet<IssueAssignment> IssueAssignments => Set<IssueAssignment>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -341,6 +342,36 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasOne(x => x.Department)
                   .WithMany()
                   .HasForeignKey(x => x.DepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 15. IssueAssignments
+        builder.Entity<IssueAssignment>(entity =>
+        {
+            entity.ToTable("IssueAssignments", table =>
+                table.HasCheckConstraint("CK_IssueAssignments_Method", "AssignmentMethod IN ('AUTO', 'MANUAL', 'TRANSFER', 'ESCALATION')"));
+            entity.HasKey(x => x.AssignmentId);
+            entity.Property(x => x.AssignmentId).ValueGeneratedOnAdd();
+            entity.Property(x => x.AssignmentMethod).IsRequired().HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.AssignmentNote).HasMaxLength(1000);
+            entity.Property(x => x.AssignedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.AcceptedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.EndedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.DepartmentId);
+            entity.HasIndex(x => x.RoutingRuleId);
+            entity.HasIndex(x => new { x.IssueId, x.IsCurrent });
+
+            entity.HasOne(x => x.Issue)
+                  .WithMany(x => x.Assignments)
+                  .HasForeignKey(x => x.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Department)
+                  .WithMany()
+                  .HasForeignKey(x => x.DepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RoutingRule)
+                  .WithMany()
+                  .HasForeignKey(x => x.RoutingRuleId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
     }

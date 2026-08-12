@@ -126,7 +126,8 @@ public class IssueService : IIssueService
         }
         while (await _context.Issues.AnyAsync(i => i.PublicCode == publicCode, cancellationToken));
 
-        // 7. Tạo entity Issue
+        // 7. Tạo Issue, đính kèm, timeline và assignment trong cùng transaction DB.
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var issue = new Issue
         {
             PublicCode = publicCode,
@@ -208,9 +209,45 @@ public class IssueService : IIssueService
         };
 
         _context.IssueUpdates.Add(initialUpdate);
-        await _context.SaveChangesAsync(cancellationToken);
 
-        // 10. Trả về chi tiết sự cố vừa tạo
+        // 10. Tự động định tuyến theo cặp loại sự cố + khu vực (nếu có rule active).
+        var routingRule = await _context.RoutingRules
+            .Include(r => r.Department)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.IssueTypeId == issue.IssueTypeId &&
+                                      r.AreaId == issue.AreaId &&
+                                      r.IsActive &&
+                                      r.Department.IsActive,
+                cancellationToken);
+
+        if (routingRule is not null)
+        {
+            _context.IssueAssignments.Add(new IssueAssignment
+            {
+                IssueId = issue.IssueId,
+                DepartmentId = routingRule.DepartmentId,
+                RoutingRuleId = routingRule.RoutingRuleId,
+                AssignmentMethod = "AUTO",
+                AssignmentNote = "Tự động định tuyến theo loại sự cố và khu vực.",
+                AssignedAt = DateTime.UtcNow,
+                IsCurrent = true
+            });
+            _context.IssueUpdates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                FromStatusId = status.StatusId,
+                ToStatusId = status.StatusId,
+                Note = $"Đã định tuyến tự động đến đơn vị '{routingRule.Department.DepartmentName}'.",
+                CreatedBy = reporterId,
+                IsSystemGenerated = true,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        // 11. Trả về chi tiết sự cố vừa tạo
         var detailResult = await GetIssueByIdAsync(issue.IssueId, reporterId, cancellationToken);
         return new ApiResponse<IssueDetailResponse>
         {
@@ -255,6 +292,18 @@ public class IssueService : IIssueService
         }
 
         var response = MapToDetailResponse(issue, reporter?.FullName ?? "Công dân", hasUpvoted);
+
+        var currentDepartment = await _context.IssueAssignments
+            .Where(x => x.IssueId == issueId && x.IsCurrent)
+            .Select(x => new LookupItemResponse
+            {
+                Id = x.DepartmentId,
+                Name = x.Department.DepartmentName,
+                Code = x.Department.DepartmentCode
+            })
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cancellationToken);
+        response.CurrentDepartment = currentDepartment;
 
         return new ApiResponse<IssueDetailResponse>
         {
@@ -516,7 +565,11 @@ public class IssueService : IIssueService
         var timelineItems = updates.Select(u => new IssueTimelineItemResponse
         {
             Id = u.Id,
-            UpdateType = u.FromStatusId == null ? "CREATED" : "STATUS_CHANGE",
+            UpdateType = u.Note != null && u.Note.StartsWith("Đã định tuyến")
+                ? "ROUTED"
+                : u.Note != null && u.Note.StartsWith("Đã chuyển đơn vị")
+                    ? "REASSIGNED"
+                    : u.FromStatusId == null ? "CREATED" : "STATUS_CHANGE",
             FromStatus = u.FromStatus != null ? new LookupItemResponse
             {
                 Id = u.FromStatus.StatusId,
