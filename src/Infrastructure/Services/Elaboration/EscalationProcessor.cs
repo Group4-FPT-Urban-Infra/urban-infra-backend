@@ -88,6 +88,48 @@ public class EscalationProcessor
                 {
                     await _db.SaveChangesAsync(cancellationToken);
                     created++;
+
+                    // Create automatic Notifications for Escalation_Event
+                    var targetUserIds = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(ev.TargetUserId))
+                    {
+                        targetUserIds.Add(ev.TargetUserId);
+                    }
+                    if (rule.TargetDepartmentId.HasValue)
+                    {
+                        var deptUserIds = await _db.DepartmentMembers
+                            .Where(dm => dm.DepartmentId == rule.TargetDepartmentId.Value && dm.IsActive)
+                            .Select(dm => dm.UserId)
+                            .ToListAsync(cancellationToken);
+                        targetUserIds.AddRange(deptUserIds);
+                    }
+                    var issueReporterId = await _db.Issues
+                        .Where(i => i.IssueId == sla.IssueId)
+                        .Select(i => i.ReporterId)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(issueReporterId))
+                    {
+                        targetUserIds.Add(issueReporterId);
+                    }
+
+                    var distinctUserIds = targetUserIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+                    foreach (var targetUserId in distinctUserIds)
+                    {
+                        _db.Notifications.Add(new Domain.Entities.Notification
+                        {
+                            UserId = targetUserId,
+                            Title = $"Cảnh báo leo thang sự cố #{sla.IssueId}",
+                            Message = $"Sự cố #{sla.IssueId} đã bị leo thang do quá hạn SLA (Mức {rule.EscalationLevel}).",
+                            NotificationType = "ESCALATION",
+                            IssueId = sla.IssueId,
+                            IsRead = false,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    if (distinctUserIds.Any())
+                    {
+                        await _db.SaveChangesAsync(cancellationToken);
+                    }
                 }
                 catch (DbUpdateException ex)
                 {
