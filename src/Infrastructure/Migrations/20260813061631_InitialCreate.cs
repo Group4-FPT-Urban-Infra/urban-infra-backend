@@ -113,7 +113,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     IconUrl = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     Description = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -193,6 +192,7 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     Longitude = table.Column<decimal>(type: "decimal(9,6)", precision: 9, scale: 6, nullable: false),
                     UpvoteCount = table.Column<int>(type: "int", nullable: false),
                     IsPublic = table.Column<bool>(type: "bit", nullable: false),
+                    IsArchived = table.Column<bool>(type: "bit", nullable: false),
                     ReportedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: false),
                     ResolvedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: true),
                     ClosedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: true),
@@ -518,6 +518,117 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "IssueAssignments",
+                columns: table => new
+                {
+                    AssignmentId = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    IssueId = table.Column<long>(type: "bigint", nullable: false),
+                    DepartmentId = table.Column<int>(type: "int", nullable: false),
+                    RoutingRuleId = table.Column<int>(type: "int", nullable: true),
+                    AssignmentMethod = table.Column<string>(type: "varchar(20)", unicode: false, maxLength: 20, nullable: false),
+                    AssignmentNote = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    AssignedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: false),
+                    AcceptedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: true),
+                    EndedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: true),
+                    IsCurrent = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IssueAssignments", x => x.AssignmentId);
+                    table.CheckConstraint("CK_IssueAssignments_Method", "AssignmentMethod IN ('AUTO', 'MANUAL', 'TRANSFER', 'ESCALATION')");
+                    table.ForeignKey(
+                        name: "FK_IssueAssignments_Departments_DepartmentId",
+                        column: x => x.DepartmentId,
+                        principalTable: "Departments",
+                        principalColumn: "DepartmentId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_IssueAssignments_Issues_IssueId",
+                        column: x => x.IssueId,
+                        principalTable: "Issues",
+                        principalColumn: "IssueId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_IssueAssignments_RoutingRules_RoutingRuleId",
+                        column: x => x.RoutingRuleId,
+                        principalTable: "RoutingRules",
+                        principalColumn: "RoutingRuleId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "EscalationRules",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    SlaPolicyId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    OverdueMinutes = table.Column<int>(type: "int", nullable: false),
+                    TargetDepartmentId = table.Column<int>(type: "int", nullable: true),
+                    TargetRoleName = table.Column<string>(type: "varchar(100)", unicode: false, maxLength: 100, nullable: true),
+                    EscalationLevel = table.Column<int>(type: "int", nullable: false),
+                    NotificationTitle = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
+                    NotificationTemplate = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_EscalationRules", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_EscalationRules_Departments_TargetDepartmentId",
+                        column: x => x.TargetDepartmentId,
+                        principalTable: "Departments",
+                        principalColumn: "DepartmentId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_EscalationRules_SlaPolicies_SlaPolicyId",
+                        column: x => x.SlaPolicyId,
+                        principalTable: "SlaPolicies",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "IssueSlas",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    IssueId = table.Column<long>(type: "bigint", nullable: false),
+                    SlaPolicyId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    FirstResponseMinutes = table.Column<int>(type: "int", nullable: false),
+                    ResolutionMinutes = table.Column<int>(type: "int", nullable: false),
+                    FirstResponseDueAt = table.Column<DateTime>(type: "datetime2(0)", nullable: true),
+                    ResolutionDueAt = table.Column<DateTime>(type: "datetime2(0)", nullable: false),
+                    FirstRespondedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: true),
+                    ResolvedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: true),
+                    IsFirstResponseBreached = table.Column<bool>(type: "bit", nullable: false),
+                    IsResolutionBreached = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2(0)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IssueSlas", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_IssueSlas_Issues_IssueId",
+                        column: x => x.IssueId,
+                        principalTable: "Issues",
+                        principalColumn: "IssueId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_IssueSlas_SlaPolicies_SlaPolicyId",
+                        column: x => x.SlaPolicyId,
+                        principalTable: "SlaPolicies",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "IssueAttachments",
                 columns: table => new
                 {
@@ -557,6 +668,49 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "EscalationEvents",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    IssueId = table.Column<long>(type: "bigint", nullable: false),
+                    EscalationRuleId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    TargetDepartmentId = table.Column<int>(type: "int", nullable: true),
+                    TargetUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: true),
+                    TriggeredAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AcknowledgedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    AcknowledgedBy = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: true),
+                    EventStatus = table.Column<string>(type: "varchar(50)", unicode: false, maxLength: 50, nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_EscalationEvents", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_EscalationEvents_Departments_TargetDepartmentId",
+                        column: x => x.TargetDepartmentId,
+                        principalTable: "Departments",
+                        principalColumn: "DepartmentId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_EscalationEvents_EscalationRules_EscalationRuleId",
+                        column: x => x.EscalationRuleId,
+                        principalTable: "EscalationRules",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_EscalationEvents_Issues_IssueId",
+                        column: x => x.IssueId,
+                        principalTable: "Issues",
+                        principalColumn: "IssueId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_Areas_ParentAreaId",
                 table: "Areas",
@@ -577,6 +731,48 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                 name: "IX_Departments_ParentDepartmentId",
                 table: "Departments",
                 column: "ParentDepartmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EscalationEvents_EscalationRuleId",
+                table: "EscalationEvents",
+                column: "EscalationRuleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EscalationEvents_IssueId",
+                table: "EscalationEvents",
+                column: "IssueId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EscalationEvents_TargetDepartmentId",
+                table: "EscalationEvents",
+                column: "TargetDepartmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EscalationRules_TargetDepartmentId",
+                table: "EscalationRules",
+                column: "TargetDepartmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_EscalationRules_UniqueCombination",
+                table: "EscalationRules",
+                columns: new[] { "SlaPolicyId", "EscalationLevel", "OverdueMinutes", "TargetDepartmentId", "TargetRoleName" },
+                unique: true,
+                filter: "[TargetDepartmentId] IS NOT NULL AND [TargetRoleName] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueAssignments_DepartmentId",
+                table: "IssueAssignments",
+                column: "DepartmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueAssignments_IssueId_IsCurrent",
+                table: "IssueAssignments",
+                columns: new[] { "IssueId", "IsCurrent" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueAssignments_RoutingRuleId",
+                table: "IssueAssignments",
+                column: "RoutingRuleId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_IssueAttachments_IssueId",
@@ -650,6 +846,17 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                 name: "IX_Issues_StatusId",
                 table: "Issues",
                 column: "StatusId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueSlas_IssueId",
+                table: "IssueSlas",
+                column: "IssueId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueSlas_SlaPolicyId",
+                table: "IssueSlas",
+                column: "SlaPolicyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_IssueStatuses_DisplayOrder",
@@ -794,7 +1001,16 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                 name: "DepartmentMembers");
 
             migrationBuilder.DropTable(
+                name: "EscalationEvents");
+
+            migrationBuilder.DropTable(
+                name: "IssueAssignments");
+
+            migrationBuilder.DropTable(
                 name: "IssueAttachments");
+
+            migrationBuilder.DropTable(
+                name: "IssueSlas");
 
             migrationBuilder.DropTable(
                 name: "IssueUpvotes");
@@ -804,12 +1020,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "RoleClaims");
-
-            migrationBuilder.DropTable(
-                name: "RoutingRules");
-
-            migrationBuilder.DropTable(
-                name: "SlaPolicies");
 
             migrationBuilder.DropTable(
                 name: "UserClaims");
@@ -824,13 +1034,22 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                 name: "UserTokens");
 
             migrationBuilder.DropTable(
+                name: "EscalationRules");
+
+            migrationBuilder.DropTable(
+                name: "RoutingRules");
+
+            migrationBuilder.DropTable(
                 name: "IssueUpdates");
 
             migrationBuilder.DropTable(
-                name: "Departments");
+                name: "Roles");
 
             migrationBuilder.DropTable(
-                name: "Roles");
+                name: "SlaPolicies");
+
+            migrationBuilder.DropTable(
+                name: "Departments");
 
             migrationBuilder.DropTable(
                 name: "Issues");

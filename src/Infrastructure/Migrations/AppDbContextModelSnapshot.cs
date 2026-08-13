@@ -274,20 +274,26 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("AcknowledgedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("AcknowledgedBy")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<DateTime?>("AcknowledgedAt")
-                        .HasColumnType("datetime2(0)");
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("EscalationRuleId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("EventStatus")
                         .HasMaxLength(50)
                         .IsUnicode(false)
                         .HasColumnType("varchar(50)");
-
-                    b.Property<Guid?>("EscalationRuleId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -307,7 +313,13 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("TriggeredAt")
-                        .HasColumnType("datetime2(0)");
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -328,8 +340,11 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(0)");
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("EscalationLevel")
                         .HasColumnType("int");
@@ -362,15 +377,20 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsUnicode(false)
                         .HasColumnType("varchar(100)");
 
-                    b.HasKey("Id");
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
-                    b.HasIndex("SlaPolicyId");
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
 
                     b.HasIndex("TargetDepartmentId");
 
                     b.HasIndex("SlaPolicyId", "EscalationLevel", "OverdueMinutes", "TargetDepartmentId", "TargetRoleName")
                         .IsUnique()
-                        .HasDatabaseName("UX_EscalationRules_UniqueCombination");
+                        .HasDatabaseName("UX_EscalationRules_UniqueCombination")
+                        .HasFilter("[TargetDepartmentId] IS NOT NULL AND [TargetRoleName] IS NOT NULL");
 
                     b.ToTable("EscalationRules", (string)null);
                 });
@@ -520,9 +540,9 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.HasIndex("DepartmentId");
 
-                    b.HasIndex("IssueId", "IsCurrent");
-
                     b.HasIndex("RoutingRuleId");
+
+                    b.HasIndex("IssueId", "IsCurrent");
 
                     b.ToTable("IssueAssignments", null, t =>
                         {
@@ -924,12 +944,12 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.HasKey("RoutingRuleId");
 
-                    b.HasIndex("AreaId", "IssueTypeId")
-                        .IsUnique();
-
                     b.HasIndex("DepartmentId");
 
                     b.HasIndex("IssueTypeId");
+
+                    b.HasIndex("AreaId", "IssueTypeId")
+                        .IsUnique();
 
                     b.ToTable("RoutingRules", (string)null);
                 });
@@ -969,12 +989,12 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PriorityId");
+
                     b.HasIndex("IssueTypeId", "PriorityId")
                         .IsUnique();
 
-                    b.HasIndex("PriorityId");
-
-                    b.ToTable("SlaPolicies", null, t =>
+                    b.ToTable("SlaPolicies", t =>
                         {
                             t.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0");
                         });

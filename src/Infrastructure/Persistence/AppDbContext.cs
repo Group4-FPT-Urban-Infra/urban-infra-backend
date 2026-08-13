@@ -194,11 +194,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .IsRequired();
 
             entity.HasIndex(s => new { s.IssueTypeId, s.PriorityId }).IsUnique();
-
-            entity.HasQueryFilter(s => !s.IsDeleted);
-
-            // Constraint kiểm tra thời gian dương
-            entity.ToTable(t => t.HasCheckConstraint("CK_SlaPolicies_Minutes_Positive", "ResolutionMinutes > 0 AND FirstResponseMinutes > 0"));
         });
 
         // 10. IssueUpvotes
@@ -413,6 +408,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.ToTable("EscalationRules");
             entity.HasKey(x => x.Id);
 
+            // Note: BaseEntity columns (CreatedAtUtc, UpdatedAtUtc, etc.) are not mapped
+            // because the database table doesn't have those columns
+
             entity.Property(x => x.SlaPolicyId).IsRequired();
             entity.Property(x => x.OverdueMinutes).IsRequired();
             entity.Property(x => x.TargetRoleName).HasMaxLength(100).IsUnicode(false);
@@ -435,8 +433,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasIndex(x => new { x.SlaPolicyId, x.EscalationLevel, x.OverdueMinutes, x.TargetDepartmentId, x.TargetRoleName })
                   .IsUnique()
                   .HasDatabaseName("UX_EscalationRules_UniqueCombination");
-
-            entity.HasQueryFilter(x => !x.IsDeleted);
         });
 
         // 18. EscalationEvents
@@ -467,7 +463,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
 
             entity.HasIndex(x => x.IssueId).HasDatabaseName("IX_EscalationEvents_IssueId");
             entity.HasIndex(x => x.TargetDepartmentId).HasDatabaseName("IX_EscalationEvents_TargetDepartmentId");
-            entity.HasQueryFilter(x => !x.IsDeleted);
         });
 
         // 19. Notifications
