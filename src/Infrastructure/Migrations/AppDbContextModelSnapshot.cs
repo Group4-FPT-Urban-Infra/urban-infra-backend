@@ -637,9 +637,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 

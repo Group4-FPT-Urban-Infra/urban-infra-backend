@@ -8,7 +8,7 @@ namespace UrbanInfraSystem.Application.Interfaces;
 
 public interface ISlaPolicyService
 {
-    Task<IReadOnlyList<SlaPolicyResponse>> GetAllAsync(CancellationToken ct = default);
+    Task<UrbanInfraSystem.Application.DTOs.UserManagement.PagedResult<SlaPolicyResponse>> GetAllAsync(SearchSlaPoliciesRequest request, CancellationToken ct = default);
 
     Task<SlaPolicyResponse?> GetByIdAsync(Guid id, CancellationToken ct = default);
 

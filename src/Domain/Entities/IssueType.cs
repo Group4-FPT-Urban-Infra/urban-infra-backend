@@ -7,7 +7,7 @@ namespace UrbanInfraSystem.Domain.Entities;
 /// Entity cho danh mục loại sự cố hạ tầng đô thị (VD: Đèn đường, Ổ gà, Rác thải...).
 /// Hỗ trợ phân cấp cha-con thông qua ParentIssueTypeId.
 /// </summary>
-public class IssueType : BaseEntity
+public class IssueType
 {
     /// <summary>Mã loại sự cố, dùng làm mã định danh ngắn gọn (VD: 1, 2, 3...).</summary>
     public int IssueTypeId { get; set; }
@@ -40,4 +40,11 @@ public class IssueType : BaseEntity
 
     /// <summary>Danh sách các chính sách SLA áp dụng cho loại sự cố này.</summary>
     public ICollection<SlaPolicy> SlaPolicies { get; set; } = new List<SlaPolicy>();
+
+    // ==================== Audit Properties ====================
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public string? CreatedBy { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
+    public string? UpdatedBy { get; set; }
+    public bool IsDeleted { get; set; } = false;
 }
