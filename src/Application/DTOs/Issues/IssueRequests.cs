@@ -37,8 +37,15 @@ public class SearchIssuesRequest
 
 public class FindNearbyIssuesRequest
 {
-    [Range(1, int.MaxValue)]
-    public int IssueTypeId { get; set; }
+    public int? IssueTypeId { get; set; }
+
+    public string[]? StatusCodes { get; set; }
+
+    public string[]? PriorityCodes { get; set; }
+
+    public DateTime? FromDate { get; set; }
+
+    public DateTime? ToDate { get; set; }
 
     [Range(-90, 90)]
     public decimal Latitude { get; set; }
@@ -46,14 +53,14 @@ public class FindNearbyIssuesRequest
     [Range(-180, 180)]
     public decimal Longitude { get; set; }
 
-    [Range(10, 2000)]
-    public int RadiusMeters { get; set; } = 200;
+    [Range(10, 20000)]
+    public int RadiusMeters { get; set; } = 2000;
 
     [Range(1, 365)]
-    public int WithinDays { get; set; } = 30;
+    public int WithinDays { get; set; } = 365;
 
-    [Range(1, 20)]
-    public int Limit { get; set; } = 5;
+    [Range(1, 50)]
+    public int Limit { get; set; } = 10;
 }
 
 public class GetMyIssuesRequest
