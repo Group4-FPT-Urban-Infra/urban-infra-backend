@@ -68,6 +68,7 @@ public static class DependencyInjection
             });
 
         services.AddAuthorization();
+        services.AddSignalR();
 
         // --- Application services ---
         services.AddHttpContextAccessor();
@@ -87,6 +88,7 @@ public static class DependencyInjection
         services.AddScoped<IIssueService, IssueService>();
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
         services.AddScoped<IIssueAssignmentService, IssueAssignmentService>();
+        services.AddScoped<INotificationService, NotificationService>();
 
         // --- Background Hosted Services ---
         services.AddHostedService<UrbanInfraSystem.Infrastructure.BackgroundServices.SlaCheckBackgroundService>();

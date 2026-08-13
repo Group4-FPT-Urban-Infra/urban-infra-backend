@@ -33,6 +33,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<IssueSla> IssueSlas => Set<IssueSla>();
     public DbSet<EscalationRule> EscalationRules => Set<EscalationRule>();
     public DbSet<EscalationEvent> EscalationEvents => Set<EscalationEvent>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -467,6 +468,19 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasIndex(x => x.IssueId).HasDatabaseName("IX_EscalationEvents_IssueId");
             entity.HasIndex(x => x.TargetDepartmentId).HasDatabaseName("IX_EscalationEvents_TargetDepartmentId");
             entity.HasQueryFilter(x => !x.IsDeleted);
+        });
+
+        // 19. Notifications
+        builder.Entity<Notification>(entity =>
+        {
+            entity.ToTable("Notifications");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            entity.Property(x => x.Message).IsRequired().HasMaxLength(2000);
+            entity.Property(x => x.NotificationType).HasMaxLength(50);
+            entity.Property(x => x.CreatedAt).IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.IsRead }).HasDatabaseName("IX_Notifications_UserId_IsRead");
         });
     }
 }

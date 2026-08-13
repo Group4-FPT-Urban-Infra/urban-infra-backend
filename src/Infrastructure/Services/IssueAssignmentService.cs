@@ -83,6 +83,31 @@ public class IssueAssignmentService : IIssueAssignmentService
             CreatedAt = now
         });
 
+        // Create automatic Notifications for Assignment
+        var deptMemberIds = await _context.DepartmentMembers
+            .Where(x => x.DepartmentId == department.DepartmentId && x.IsActive)
+            .Select(x => x.UserId)
+            .ToListAsync(cancellationToken);
+
+        var assignNotifyUsers = deptMemberIds.Concat(new[] { issue.ReporterId })
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToList();
+
+        foreach (var uid in assignNotifyUsers)
+        {
+            _context.Notifications.Add(new Notification
+            {
+                UserId = uid,
+                Title = $"Phân công sự cố #{issueId}",
+                Message = $"Sự cố #{issueId} đã được phân công xử lý cho đơn vị '{department.DepartmentName}'.",
+                NotificationType = "ASSIGNMENT",
+                IssueId = issueId,
+                IsRead = false,
+                CreatedAt = now
+            });
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         assignment.Department = department;
