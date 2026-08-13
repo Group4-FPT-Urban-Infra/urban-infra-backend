@@ -40,11 +40,11 @@ public class IssueService : IIssueService
         var weekStart = DateTime.UtcNow.Date.AddDays(-(int)DateTime.UtcNow.DayOfWeek);
 
         var activeIssuesCount = await _context.Issues
-            .Where(i => i.IsPublic && !resolvedStatusCodes.Contains(i.Status.StatusCode))
+            .Where(i => i.IsPublic && !i.IsArchived && !resolvedStatusCodes.Contains(i.Status.StatusCode))
             .CountAsync(cancellationToken);
 
         var resolvedThisWeekCount = await _context.Issues
-            .Where(i => i.IsPublic && i.ResolvedAt.HasValue && i.ResolvedAt >= weekStart)
+            .Where(i => i.IsPublic && !i.IsArchived && i.ResolvedAt.HasValue && i.ResolvedAt >= weekStart)
             .CountAsync(cancellationToken);
 
         var citizenUsersCount = await _context.Users
@@ -370,7 +370,7 @@ public class IssueService : IIssueService
             .Include(i => i.Priority)
             .Include(i => i.Status)
             .Include(i => i.Attachments)
-            .Where(i => i.IsPublic)
+            .Where(i => i.IsPublic && !i.IsArchived)
             .AsNoTracking();
 
         if (request.IssueTypeId.HasValue)
@@ -538,7 +538,7 @@ public class IssueService : IIssueService
             .Include(i => i.Priority)
             .Include(i => i.Status)
             .Include(i => i.Attachments)
-            .Where(i => i.ReportedAt >= fromDate && i.IsPublic);
+            .Where(i => i.ReportedAt >= fromDate && i.IsPublic && !i.IsArchived);
 
         // Apply date range filter if specified
         if (request.FromDate.HasValue)
