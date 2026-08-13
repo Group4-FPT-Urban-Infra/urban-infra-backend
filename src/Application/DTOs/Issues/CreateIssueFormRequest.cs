@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
-namespace UrbanInfraSystem.API.Contracts.Issues;
+namespace UrbanInfraSystem.Application.DTOs.Issues;
 
 /// <summary>Dữ liệu multipart/form-data dùng khi công dân tạo báo cáo.</summary>
 public class CreateIssueFormRequest
@@ -10,6 +12,9 @@ public class CreateIssueFormRequest
 
     [Range(1, int.MaxValue)]
     public int AreaId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int? PriorityId { get; set; }
 
     [Required, MinLength(5), MaxLength(200)]
     public string Title { get; set; } = default!;

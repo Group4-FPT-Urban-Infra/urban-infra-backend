@@ -11,6 +11,7 @@ public class IssueTypeResponse
     public string TypeName { get; set; } = default!;
     public string? IconUrl { get; set; }
     public string? Description { get; set; }
+    public string? SlaPolicySummary { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
@@ -61,5 +62,6 @@ public class IssueTypeSummary
     public string TypeCode { get; set; } = default!;
     public string TypeName { get; set; } = default!;
     public string? IconUrl { get; set; }
+    public string? SlaPolicySummary { get; set; }
     public bool IsActive { get; set; }
 }

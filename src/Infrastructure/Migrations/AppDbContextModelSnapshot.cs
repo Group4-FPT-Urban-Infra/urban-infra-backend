@@ -268,6 +268,113 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.ToTable("DepartmentMembers", (string)null);
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.EscalationEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AcknowledgedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("AcknowledgedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<string>("EventStatus")
+                        .HasMaxLength(50)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<Guid?>("EscalationRuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("TargetDepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("TriggeredAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EscalationRuleId");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("IX_EscalationEvents_IssueId");
+
+                    b.HasIndex("TargetDepartmentId")
+                        .HasDatabaseName("IX_EscalationEvents_TargetDepartmentId");
+
+                    b.ToTable("EscalationEvents", (string)null);
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.EscalationRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("EscalationLevel")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NotificationTemplate")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("NotificationTitle")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int>("OverdueMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SlaPolicyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("TargetDepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetRoleName")
+                        .HasMaxLength(100)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SlaPolicyId");
+
+                    b.HasIndex("TargetDepartmentId");
+
+                    b.HasIndex("SlaPolicyId", "EscalationLevel", "OverdueMinutes", "TargetDepartmentId", "TargetRoleName")
+                        .IsUnique()
+                        .HasDatabaseName("UX_EscalationRules_UniqueCombination");
+
+                    b.ToTable("EscalationRules", (string)null);
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Issue", b =>
                 {
                     b.Property<long>("IssueId")
@@ -276,8 +383,22 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("IssueId"));
 
-                    b.Property<int?>("AreaId")
+                    b.Property<string>("AddressText")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("AreaId")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("DuplicateOfIssueId")
+                        .HasColumnType("bigint");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("bit");
@@ -296,24 +417,27 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .HasPrecision(9, 6)
                         .HasColumnType("decimal(9,6)");
 
-                    b.Property<int?>("PriorityId")
+                    b.Property<int>("PriorityId")
                         .HasColumnType("int");
 
                     b.Property<string>("PublicCode")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(30)");
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<DateTime>("ReportedAt")
                         .HasColumnType("datetime2(0)");
 
-                    b.Property<int?>("StatusId")
-                        .HasColumnType("int");
+                    b.Property<string>("ReporterId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("ThumbnailUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("StatusId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -325,17 +449,148 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.HasKey("IssueId");
 
-                    b.HasIndex("IssueTypeId")
-                        .HasDatabaseName("IX_Issues_IssueTypeId");
+                    b.HasIndex("AreaId");
+
+                    b.HasIndex("IssueTypeId");
+
+                    b.HasIndex("Latitude")
+                        .HasDatabaseName("IX_Issues_Latitude");
+
+                    b.HasIndex("Longitude")
+                        .HasDatabaseName("IX_Issues_Longitude");
 
                     b.HasIndex("PriorityId");
 
-                    b.HasIndex("StatusId");
+                    b.HasIndex("PublicCode")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Issues_PublicCode");
 
-                    b.HasIndex("Latitude", "Longitude")
-                        .HasDatabaseName("IX_Issues_LatLon");
+                    b.HasIndex("ReportedAt")
+                        .HasDatabaseName("IX_Issues_ReportedAt");
+
+                    b.HasIndex("ReporterId")
+                        .HasDatabaseName("IX_Issues_ReporterId");
+
+                    b.HasIndex("StatusId")
+                        .HasDatabaseName("IX_Issues_StatusId");
 
                     b.ToTable("Issues", (string)null);
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAssignment", b =>
+                {
+                    b.Property<long>("AssignmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AssignmentId"));
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<string>("AssignmentMethod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("AssignmentNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("RoutingRuleId")
+                        .HasColumnType("int");
+
+                    b.HasKey("AssignmentId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("IssueId", "IsCurrent");
+
+                    b.HasIndex("RoutingRuleId");
+
+                    b.ToTable("IssueAssignments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IssueAssignments_Method", "AssignmentMethod IN ('AUTO', 'MANUAL', 'TRANSFER', 'ESCALATION')");
+                        });
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAttachment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("HeightPx")
+                        .HasColumnType("int");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ThumbnailUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<long?>("UpdateId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UploadedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int?>("WidthPx")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("IX_IssueAttachments_IssueId");
+
+                    b.HasIndex("UpdateId")
+                        .HasDatabaseName("IX_IssueAttachments_UpdateId");
+
+                    b.HasIndex("UploadedBy");
+
+                    b.ToTable("IssueAttachments", (string)null);
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>
@@ -372,6 +627,58 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("IssuePriorities", (string)null);
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueSla", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<DateTime?>("FirstRespondedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<DateTime?>("FirstResponseDueAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("FirstResponseMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsFirstResponseBreached")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsResolutionBreached")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ResolutionDueAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("ResolutionMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<Guid?>("SlaPolicyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IssueSlas_IssueId");
+
+                    b.HasIndex("SlaPolicyId");
+
+                    b.ToTable("IssueSlas", (string)null);
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueStatus", b =>
@@ -440,9 +747,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -482,6 +786,77 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .HasDatabaseName("IX_IssueTypes_TypeCode");
 
                     b.ToTable("IssueTypes", (string)null);
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueUpdate", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int?>("FromStatusId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsSystemGenerated")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<byte?>("ProgressPercent")
+                        .HasColumnType("tinyint");
+
+                    b.Property<int>("ToStatusId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_IssueUpdates_CreatedAt");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("FromStatusId");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("IX_IssueUpdates_IssueId");
+
+                    b.HasIndex("ToStatusId");
+
+                    b.ToTable("IssueUpdates", (string)null);
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueUpvote", b =>
+                {
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.HasKey("IssueId", "UserId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_IssueUpvotes_UserId");
+
+                    b.ToTable("IssueUpvotes", (string)null);
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RefreshToken", b =>
@@ -549,12 +924,12 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.HasKey("RoutingRuleId");
 
+                    b.HasIndex("AreaId", "IssueTypeId")
+                        .IsUnique();
+
                     b.HasIndex("DepartmentId");
 
                     b.HasIndex("IssueTypeId");
-
-                    b.HasIndex("AreaId", "IssueTypeId")
-                        .IsUnique();
 
                     b.ToTable("RoutingRules", (string)null);
                 });
@@ -594,10 +969,10 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PriorityId");
-
                     b.HasIndex("IssueTypeId", "PriorityId")
                         .IsUnique();
+
+                    b.HasIndex("PriorityId");
 
                     b.ToTable("SlaPolicies", null, t =>
                         {
@@ -649,9 +1024,6 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("DepartmentId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
@@ -801,8 +1173,57 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("Department");
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.EscalationEvent", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.EscalationRule", "EscalationRule")
+                        .WithMany()
+                        .HasForeignKey("EscalationRuleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Department", "TargetDepartment")
+                        .WithMany()
+                        .HasForeignKey("TargetDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("EscalationRule");
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("TargetDepartment");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.EscalationRule", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.SlaPolicy", "SlaPolicy")
+                        .WithMany()
+                        .HasForeignKey("SlaPolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Department", "TargetDepartment")
+                        .WithMany()
+                        .HasForeignKey("TargetDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("SlaPolicy");
+
+                    b.Navigation("TargetDepartment");
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Issue", b =>
                 {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Area", "Area")
+                        .WithMany()
+                        .HasForeignKey("AreaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UrbanInfraSystem.Domain.Entities.IssueType", "IssueType")
                         .WithMany()
                         .HasForeignKey("IssueTypeId")
@@ -812,18 +1233,89 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.HasOne("UrbanInfraSystem.Domain.Entities.IssuePriority", "Priority")
                         .WithMany()
                         .HasForeignKey("PriorityId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("UrbanInfraSystem.Domain.Entities.IssueStatus", "Status")
                         .WithMany()
                         .HasForeignKey("StatusId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Area");
 
                     b.Navigation("IssueType");
 
                     b.Navigation("Priority");
 
                     b.Navigation("Status");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAssignment", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
+                        .WithMany("Assignments")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.RoutingRule", "RoutingRule")
+                        .WithMany()
+                        .HasForeignKey("RoutingRuleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("RoutingRule");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAttachment", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
+                        .WithMany("Attachments")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.IssueUpdate", "Update")
+                        .WithMany("Attachments")
+                        .HasForeignKey("UpdateId");
+
+                    b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UploadedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("Update");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueSla", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
+                        .WithOne("Sla")
+                        .HasForeignKey("UrbanInfraSystem.Domain.Entities.IssueSla", "IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.SlaPolicy", "SlaPolicy")
+                        .WithMany()
+                        .HasForeignKey("SlaPolicyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("SlaPolicy");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueType", b =>
@@ -834,6 +1326,49 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentIssueType");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueUpdate", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.IssueStatus", "FromStatus")
+                        .WithMany()
+                        .HasForeignKey("FromStatusId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
+                        .WithMany("Updates")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.IssueStatus", "ToStatus")
+                        .WithMany()
+                        .HasForeignKey("ToStatusId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FromStatus");
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("ToStatus");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueUpvote", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
+                        .WithMany("Upvotes")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RefreshToken", b =>
@@ -903,6 +1438,19 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("Members");
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Issue", b =>
+                {
+                    b.Navigation("Assignments");
+
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Sla");
+
+                    b.Navigation("Updates");
+
+                    b.Navigation("Upvotes");
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>
                 {
                     b.Navigation("SlaPolicies");
@@ -913,6 +1461,11 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("SlaPolicies");
 
                     b.Navigation("SubIssueTypes");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueUpdate", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", b =>
