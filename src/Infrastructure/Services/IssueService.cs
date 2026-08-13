@@ -162,7 +162,8 @@ public class IssueService : IIssueService
         }
         while (await _context.Issues.AnyAsync(i => i.PublicCode == publicCode, cancellationToken));
 
-        // 7. Tạo entity Issue
+        // 7. Tạo Issue, đính kèm, timeline và assignment trong cùng transaction DB.
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var issue = new Issue
         {
             PublicCode = publicCode,
@@ -182,6 +183,27 @@ public class IssueService : IIssueService
         };
 
         _context.Issues.Add(issue);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // 8. Tự động tra cứu SLA Policy theo type + priority và tạo bản ghi IssueSla
+        var slaPolicy = await _context.SlaPolicies
+            .FirstOrDefaultAsync(s => s.IssueTypeId == issue.IssueTypeId && s.PriorityId == issue.PriorityId, cancellationToken);
+
+        int firstResponseMinutes = slaPolicy?.FirstResponseMinutes ?? 120;
+        int resolutionMinutes = slaPolicy?.ResolutionMinutes ?? 1440;
+
+        var issueSla = new IssueSla
+        {
+            IssueId = issue.IssueId,
+            SlaPolicyId = slaPolicy?.Id,
+            FirstResponseMinutes = firstResponseMinutes,
+            ResolutionMinutes = resolutionMinutes,
+            FirstResponseDueAt = issue.ReportedAt.AddMinutes(firstResponseMinutes),
+            ResolutionDueAt = issue.ReportedAt.AddMinutes(resolutionMinutes),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.IssueSlas.Add(issueSla);
         await _context.SaveChangesAsync(cancellationToken);
 
         // 8. Lưu đính kèm hình ảnh (nếu có)
@@ -244,9 +266,45 @@ public class IssueService : IIssueService
         };
 
         _context.IssueUpdates.Add(initialUpdate);
-        await _context.SaveChangesAsync(cancellationToken);
 
-        // 10. Trả về chi tiết sự cố vừa tạo
+        // 10. Tự động định tuyến theo cặp loại sự cố + khu vực (nếu có rule active).
+        var routingRule = await _context.RoutingRules
+            .Include(r => r.Department)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.IssueTypeId == issue.IssueTypeId &&
+                                      r.AreaId == issue.AreaId &&
+                                      r.IsActive &&
+                                      r.Department.IsActive,
+                cancellationToken);
+
+        if (routingRule is not null)
+        {
+            _context.IssueAssignments.Add(new IssueAssignment
+            {
+                IssueId = issue.IssueId,
+                DepartmentId = routingRule.DepartmentId,
+                RoutingRuleId = routingRule.RoutingRuleId,
+                AssignmentMethod = "AUTO",
+                AssignmentNote = "Tự động định tuyến theo loại sự cố và khu vực.",
+                AssignedAt = DateTime.UtcNow,
+                IsCurrent = true
+            });
+            _context.IssueUpdates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                FromStatusId = status.StatusId,
+                ToStatusId = status.StatusId,
+                Note = $"Đã định tuyến tự động đến đơn vị '{routingRule.Department.DepartmentName}'.",
+                CreatedBy = reporterId,
+                IsSystemGenerated = true,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        // 11. Trả về chi tiết sự cố vừa tạo
         var detailResult = await GetIssueByIdAsync(issue.IssueId, reporterId, cancellationToken);
         return new ApiResponse<IssueDetailResponse>
         {
@@ -267,6 +325,7 @@ public class IssueService : IIssueService
             .Include(i => i.Priority)
             .Include(i => i.Status)
             .Include(i => i.Attachments)
+            .Include(i => i.Sla)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken);
 
@@ -291,6 +350,18 @@ public class IssueService : IIssueService
         }
 
         var response = MapToDetailResponse(issue, reporter?.FullName ?? "Công dân", hasUpvoted);
+
+        var currentDepartment = await _context.IssueAssignments
+            .Where(x => x.IssueId == issueId && x.IsCurrent)
+            .Select(x => new LookupItemResponse
+            {
+                Id = x.DepartmentId,
+                Name = x.Department.DepartmentName,
+                Code = x.Department.DepartmentCode
+            })
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cancellationToken);
+        response.CurrentDepartment = currentDepartment;
 
         return new ApiResponse<IssueDetailResponse>
         {
@@ -602,7 +673,11 @@ public class IssueService : IIssueService
         var timelineItems = updates.Select(u => new IssueTimelineItemResponse
         {
             Id = u.Id,
-            UpdateType = u.FromStatusId == null ? "CREATED" : "STATUS_CHANGE",
+            UpdateType = u.Note != null && u.Note.StartsWith("Đã định tuyến")
+                ? "ROUTED"
+                : u.Note != null && u.Note.StartsWith("Đã chuyển đơn vị")
+                    ? "REASSIGNED"
+                    : u.FromStatusId == null ? "CREATED" : "STATUS_CHANGE",
             FromStatus = u.FromStatus != null ? new LookupItemResponse
             {
                 Id = u.FromStatus.StatusId,
@@ -694,6 +769,20 @@ public class IssueService : IIssueService
             ResolvedAt = issue.ResolvedAt,
             ClosedAt = issue.ClosedAt,
             UpdatedAt = issue.ReportedAt,
+            Sla = issue.Sla != null ? new IssueSlaResponse
+            {
+                Id = issue.Sla.Id,
+                IssueId = issue.Sla.IssueId,
+                SlaPolicyId = issue.Sla.SlaPolicyId,
+                FirstResponseMinutes = issue.Sla.FirstResponseMinutes,
+                ResolutionMinutes = issue.Sla.ResolutionMinutes,
+                FirstResponseDueAt = issue.Sla.FirstResponseDueAt,
+                ResolutionDueAt = issue.Sla.ResolutionDueAt,
+                FirstRespondedAt = issue.Sla.FirstRespondedAt,
+                ResolvedAt = issue.Sla.ResolvedAt,
+                IsFirstResponseBreached = issue.Sla.IsFirstResponseBreached,
+                IsResolutionBreached = issue.Sla.IsResolutionBreached
+            } : null,
             Attachments = issue.Attachments.Select(MapAttachment).ToList()
         };
     }

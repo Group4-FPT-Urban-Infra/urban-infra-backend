@@ -73,6 +73,9 @@ public class SearchIssueTypesRequest
     /// <summary>Chỉ lấy các loại cấp cao nhất (không có cha).</summary>
     public bool? IsRootOnly { get; set; }
 
+    /// <summary>Chỉ lấy các loại cấp con (có cha).</summary>
+    public bool? IsSubCategoryOnly { get; set; }
+
     /// <summary>Chỉ lấy các loại đang hoạt động.</summary>
     public bool? IsActiveOnly { get; set; }
 

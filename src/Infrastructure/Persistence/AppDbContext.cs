@@ -29,6 +29,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Issue> Issues => Set<Issue>();
     public DbSet<IssueAttachment> IssueAttachments => Set<IssueAttachment>();
     public DbSet<IssueUpdate> IssueUpdates => Set<IssueUpdate>();
+    public DbSet<IssueAssignment> IssueAssignments => Set<IssueAssignment>();
+    public DbSet<IssueSla> IssueSlas => Set<IssueSla>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -343,6 +345,62 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany()
                   .HasForeignKey(x => x.DepartmentId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 14. IssueAssignments
+        builder.Entity<IssueAssignment>(entity =>
+        {
+            entity.ToTable("IssueAssignments", table =>
+                table.HasCheckConstraint("CK_IssueAssignments_Method", "AssignmentMethod IN ('AUTO', 'MANUAL', 'TRANSFER', 'ESCALATION')"));
+            entity.HasKey(x => x.AssignmentId);
+            entity.Property(x => x.AssignmentId).ValueGeneratedOnAdd();
+            entity.Property(x => x.AssignmentMethod).IsRequired().HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.AssignmentNote).HasMaxLength(1000);
+            entity.Property(x => x.AssignedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.AcceptedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.EndedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.DepartmentId);
+            entity.HasIndex(x => x.RoutingRuleId);
+            entity.HasIndex(x => new { x.IssueId, x.IsCurrent });
+
+            entity.HasOne(x => x.Issue)
+                  .WithMany(x => x.Assignments)
+                  .HasForeignKey(x => x.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Department)
+                  .WithMany()
+                  .HasForeignKey(x => x.DepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RoutingRule)
+                  .WithMany()
+                  .HasForeignKey(x => x.RoutingRuleId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 15. IssueSlas
+        builder.Entity<IssueSla>(entity =>
+        {
+            entity.ToTable("IssueSlas");
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Id).ValueGeneratedOnAdd();
+
+            entity.Property(s => s.FirstResponseDueAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.ResolutionDueAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.FirstRespondedAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.ResolvedAt).HasColumnType("datetime2(0)");
+            entity.Property(s => s.CreatedAt).HasColumnType("datetime2(0)");
+
+            entity.HasIndex(s => s.IssueId).IsUnique().HasDatabaseName("IX_IssueSlas_IssueId");
+
+            entity.HasOne(s => s.Issue)
+                  .WithOne(i => i.Sla)
+                  .HasForeignKey<IssueSla>(s => s.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(s => s.SlaPolicy)
+                  .WithMany()
+                  .HasForeignKey(s => s.SlaPolicyId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

@@ -12,9 +12,7 @@ using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Migrations
 {
-    [DbContext(typeof(AppDbContext))]
-    [Migration("20260812062442_InitialCreate")]
-    partial class InitialCreate
+    partial class AddIssueSlasTable
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

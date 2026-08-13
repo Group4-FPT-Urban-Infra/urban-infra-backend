@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using UrbanInfraSystem.Application.DTOs.Issues;
+using UrbanInfraSystem.Application.DTOs.IssueAssignments;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Enums;
 
@@ -21,15 +22,18 @@ public class IssuesController : ControllerBase
     private readonly IIssueService _issueService;
     private readonly IIssueUpvoteService _upvoteService;
     private readonly ICurrentUserService _currentUser;
+    private readonly IIssueAssignmentService _assignmentService;
 
     public IssuesController(
         IIssueService issueService,
         IIssueUpvoteService upvoteService,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IIssueAssignmentService assignmentService)
     {
         _issueService = issueService;
         _upvoteService = upvoteService;
         _currentUser = currentUser;
+        _assignmentService = assignmentService;
     }
 
     /// <summary>Tạo báo cáo sự cố mới kèm hình ảnh.</summary>
@@ -238,5 +242,39 @@ public class IssuesController : ControllerBase
         }
 
         return Ok(result);
+    }
+
+    /// <summary>Lấy lịch sử phân công đơn vị xử lý của sự cố.</summary>
+    [HttpGet("{issueId:long}/assignments")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentStaff}")]
+    public async Task<ActionResult<IReadOnlyList<IssueAssignmentResponse>>> GetAssignments(
+        [FromRoute] long issueId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _assignmentService.GetHistoryAsync(issueId, cancellationToken);
+        return result is null
+            ? NotFound(new { message = $"Không tìm thấy sự cố có ID = {issueId}." })
+            : Ok(result);
+    }
+
+    /// <summary>Admin hoặc quản lý đơn vị đang phụ trách chuyển sự cố sang đơn vị khác.</summary>
+    [HttpPut("{issueId:long}/reassign")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentStaff}")]
+    public async Task<ActionResult<IssueAssignmentResponse>> Reassign(
+        [FromRoute] long issueId,
+        [FromBody] ReassignIssueRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+        try
+        {
+            return Ok(await _assignmentService.ReassignAsync(
+                issueId, request, userId, _currentUser.IsInRole(Roles.Admin), cancellationToken));
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
     }
 }
