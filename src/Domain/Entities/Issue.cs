@@ -1,3 +1,6 @@
+using System;
+using UrbanInfraSystem.Domain.Common;
+
 namespace UrbanInfraSystem.Domain.Entities;
 
 /// <summary>
@@ -49,6 +52,9 @@ public class Issue
 
     /// <summary>Đánh dấu sự cố có hiển thị công khai trên bản đồ không.</summary>
     public bool IsPublic { get; set; } = true;
+
+    /// <summary>Đánh dấu sự cố đã bị ẩn (archive).</summary>
+    public bool IsArchived { get; set; } = false;
 
     /// <summary>Thời điểm công dân tạo báo cáo.</summary>
     public DateTime ReportedAt { get; set; } = DateTime.UtcNow;
