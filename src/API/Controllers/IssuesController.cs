@@ -88,10 +88,10 @@ public class IssuesController : ControllerBase
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<NearbyIssueResponse>>>> FindNearby(
         [FromQuery] FindNearbyIssuesRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         var userId = _currentUser.UserId;
-        var result = await _issueService.FindNearbyIssuesAsync(request, userId, cancellationToken);
+        var result = await _issueService.FindNearbyIssuesAsync(request, userId, ct);
         return Ok(result);
     }
 

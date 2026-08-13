@@ -71,7 +71,6 @@ public class IssueService : IIssueService
         string reporterId,
         CancellationToken cancellationToken = default)
     {
-        // 1. Kiểm tra tài khoản công dân
         var reporter = await _context.Users.FirstOrDefaultAsync(u => u.Id == reporterId, cancellationToken);
         if (reporter == null)
         {
@@ -82,7 +81,6 @@ public class IssueService : IIssueService
             };
         }
 
-        // 2. Validate Loại sự cố
         var issueType = await _context.IssueTypes
             .FirstOrDefaultAsync(t => t.IssueTypeId == request.IssueTypeId && t.IsActive, cancellationToken);
         if (issueType == null)
@@ -94,7 +92,6 @@ public class IssueService : IIssueService
             };
         }
 
-        // 3. Validate Khu vực
         var area = await _context.Areas
             .FirstOrDefaultAsync(a => a.AreaId == request.AreaId && a.IsActive, cancellationToken);
         if (area == null)
@@ -106,7 +103,6 @@ public class IssueService : IIssueService
             };
         }
 
-        // 4. Validate hoặc gán Mức độ ưu tiên mặc định
         IssuePriority? priority = null;
         if (request.PriorityId.HasValue)
         {
@@ -138,7 +134,6 @@ public class IssueService : IIssueService
             }
         }
 
-        // 5. Tìm trạng thái khởi tạo mặc định (ví dụ: REPORTED hoặc trạng thái đầu tiên)
         var status = await _context.IssueStatuses
             .Where(s => s.IsActive)
             .OrderBy(s => s.DisplayOrder)
@@ -153,7 +148,6 @@ public class IssueService : IIssueService
             };
         }
 
-        // 6. Sinh PublicCode duy nhất
         string publicCode;
         do
         {
@@ -162,7 +156,6 @@ public class IssueService : IIssueService
         }
         while (await _context.Issues.AnyAsync(i => i.PublicCode == publicCode, cancellationToken));
 
-        // 7. Tạo Issue, đính kèm, timeline và assignment trong cùng transaction DB.
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var issue = new Issue
         {
@@ -185,7 +178,6 @@ public class IssueService : IIssueService
         _context.Issues.Add(issue);
         await _context.SaveChangesAsync(cancellationToken);
 
-        // 8. Tự động tra cứu SLA Policy theo type + priority và tạo bản ghi IssueSla
         var slaPolicy = await _context.SlaPolicies
             .FirstOrDefaultAsync(s => s.IssueTypeId == issue.IssueTypeId && s.PriorityId == issue.PriorityId, cancellationToken);
 
@@ -206,7 +198,6 @@ public class IssueService : IIssueService
         _context.IssueSlas.Add(issueSla);
         await _context.SaveChangesAsync(cancellationToken);
 
-        // 8. Lưu đính kèm hình ảnh (nếu có)
         if (request.Images != null && request.Images.Count > 0)
         {
             var webRoot = _environment.WebRootPath;
@@ -253,7 +244,6 @@ public class IssueService : IIssueService
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        // 9. Ghi nhận timeline khởi tạo (IssueUpdate)
         var initialUpdate = new IssueUpdate
         {
             IssueId = issue.IssueId,
@@ -267,7 +257,6 @@ public class IssueService : IIssueService
 
         _context.IssueUpdates.Add(initialUpdate);
 
-        // 10. Tự động định tuyến theo cặp loại sự cố + khu vực (nếu có rule active).
         var routingRule = await _context.RoutingRules
             .Include(r => r.Department)
             .AsNoTracking()
@@ -304,7 +293,6 @@ public class IssueService : IIssueService
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        // 11. Trả về chi tiết sự cố vừa tạo
         var detailResult = await GetIssueByIdAsync(issue.IssueId, reporterId, cancellationToken);
         return new ApiResponse<IssueDetailResponse>
         {
@@ -805,7 +793,7 @@ public class IssueService : IIssueService
 
     private static double CalculateHaversineDistance(double lat1, double lon1, double lat2, double lon2)
     {
-        const double R = 6371000; // Trái Đất bán kính tính bằng mét
+        const double R = 6371000;
         var dLat = ToRadians(lat2 - lat1);
         var dLon = ToRadians(lon2 - lon1);
 
