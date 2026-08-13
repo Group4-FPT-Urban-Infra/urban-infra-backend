@@ -33,10 +33,10 @@ public class EscalationProcessor
 
         var now = DateTime.UtcNow;
 
-        // Fetch overdue, not completed IssueSlas
+        // Fetch overdue IssueSlas that haven't been resolved yet
         var overdueSlas = await _db.IssueSlas
             .AsNoTracking()
-            .Where(s => !s.IsCompleted && s.ResolutionDueAtUtc < now)
+            .Where(s => s.ResolvedAt == null && s.ResolutionDueAt < now)
             .ToListAsync(cancellationToken);
 
         _logger.LogInformation("Found {Count} overdue IssueSlas.", overdueSlas.Count);
@@ -47,7 +47,7 @@ public class EscalationProcessor
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var overdueMinutes = (int)Math.Floor((now - sla.ResolutionDueAtUtc).TotalMinutes);
+            var overdueMinutes = (int)Math.Floor((now - sla.ResolutionDueAt).TotalMinutes);
 
             // get active rules for SLA policy
             var rules = await _db.EscalationRules

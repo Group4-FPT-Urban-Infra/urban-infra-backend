@@ -5,10 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Application.DTOs.EscalationEvents;
-using UrbanInfraSystem.Application.Interfaces;
-using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Enums;
 
