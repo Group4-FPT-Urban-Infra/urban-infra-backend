@@ -68,6 +68,7 @@ public static class DependencyInjection
             });
 
         services.AddAuthorization();
+        services.AddSignalR();
 
         // --- Application services ---
         services.AddHttpContextAccessor();

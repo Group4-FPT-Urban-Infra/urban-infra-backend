@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using UrbanInfraSystem.Infrastructure.Hubs;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Services.Elaboration;
@@ -16,11 +19,13 @@ public class EscalationProcessor
 {
     private readonly AppDbContext _db;
     private readonly ILogger<EscalationProcessor> _logger;
+    private readonly IHubContext<NotificationHub>? _hubContext;
 
-    public EscalationProcessor(AppDbContext db, ILogger<EscalationProcessor> logger)
+    public EscalationProcessor(AppDbContext db, ILogger<EscalationProcessor> logger, IHubContext<NotificationHub>? hubContext = null)
     {
         _db = db;
         _logger = logger;
+        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -129,6 +134,30 @@ public class EscalationProcessor
                     if (distinctUserIds.Any())
                     {
                         await _db.SaveChangesAsync(cancellationToken);
+
+                        if (_hubContext != null)
+                        {
+                            foreach (var targetUserId in distinctUserIds)
+                            {
+                                try
+                                {
+                                    await _hubContext.Clients.Group(targetUserId).SendAsync("ReceiveNotification", new
+                                    {
+                                        userId = targetUserId,
+                                        title = $"Cảnh báo leo thang sự cố #{sla.IssueId}",
+                                        message = $"Sự cố #{sla.IssueId} đã bị leo thang do quá hạn SLA (Mức {rule.EscalationLevel}).",
+                                        notificationType = "ESCALATION",
+                                        issueId = sla.IssueId,
+                                        isRead = false,
+                                        createdAt = DateTime.UtcNow
+                                    }, cancellationToken: cancellationToken);
+                                }
+                                catch
+                                {
+                                    // silence hub broadcast error
+                                }
+                            }
+                        }
                     }
                 }
                 catch (DbUpdateException ex)

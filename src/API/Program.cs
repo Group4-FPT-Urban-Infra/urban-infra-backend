@@ -138,5 +138,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<UrbanInfraSystem.Infrastructure.Hubs.NotificationHub>("/hubs/notifications");
 
 app.Run();

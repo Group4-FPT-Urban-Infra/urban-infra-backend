@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using UrbanInfraSystem.Application.DTOs.Notifications;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Entities;
+using UrbanInfraSystem.Infrastructure.Hubs;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Services;
@@ -14,10 +16,12 @@ namespace UrbanInfraSystem.Infrastructure.Services;
 public class NotificationService : INotificationService
 {
     private readonly AppDbContext _db;
+    private readonly IHubContext<NotificationHub>? _hubContext;
 
-    public NotificationService(AppDbContext db)
+    public NotificationService(AppDbContext db, IHubContext<NotificationHub>? hubContext = null)
     {
         _db = db;
+        _hubContext = hubContext;
     }
 
     public async Task<NotificationResponse> CreateNotificationAsync(CreateNotificationRequest request, CancellationToken ct = default)
@@ -36,7 +40,22 @@ public class NotificationService : INotificationService
         _db.Notifications.Add(entity);
         await _db.SaveChangesAsync(ct);
 
-        return Map(entity);
+        var response = Map(entity);
+
+        // Broadcast realtime notification via SignalR Hub if hubContext is available
+        if (_hubContext != null)
+        {
+            try
+            {
+                await _hubContext.Clients.Group(request.UserId).SendAsync("ReceiveNotification", response, cancellationToken: ct);
+            }
+            catch
+            {
+                // Silence hub broadcast errors to prevent blocking DB operations
+            }
+        }
+
+        return response;
     }
 
     public async Task<IReadOnlyList<NotificationResponse>> GetUnreadByUserIdAsync(string userId, CancellationToken ct = default)
