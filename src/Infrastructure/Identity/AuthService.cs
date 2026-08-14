@@ -152,7 +152,12 @@ public class AuthService : IAuthService
     private async Task<AuthResponse> IssueTokensAsync(ApplicationUser user)
     {
         var roles = await _userManager.GetRolesAsync(user);
-        var (accessToken, expiresAtUtc) = _jwtService.GenerateAccessToken(user.Id, user.Email!, roles);
+
+        var deptMembership = await _db.DepartmentMembers
+            .FirstOrDefaultAsync(dm => dm.UserId == user.Id && dm.IsActive);
+
+        var (accessToken, expiresAtUtc) = _jwtService.GenerateAccessToken(
+            user.Id, user.Email!, roles, deptMembership?.DepartmentId);
         var refreshTokenValue = _jwtService.GenerateRefreshToken();
 
         _db.RefreshTokens.Add(new RefreshToken
