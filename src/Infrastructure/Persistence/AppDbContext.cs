@@ -34,6 +34,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<EscalationRule> EscalationRules => Set<EscalationRule>();
     public DbSet<EscalationEvent> EscalationEvents => Set<EscalationEvent>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -476,6 +477,32 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.Property(x => x.NotificationType).HasMaxLength(50);
             entity.Property(x => x.CreatedAt).IsRequired();
             entity.HasIndex(x => new { x.UserId, x.IsRead }).HasDatabaseName("IX_Notifications_UserId_IsRead");
+        });
+
+        // 20. AuditLogs
+        builder.Entity<AuditLog>(entity =>
+        {
+            entity.ToTable("AuditLogs");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("audit_log_id");
+            entity.Property(x => x.ActorUserId).HasColumnName("actor_user_id").HasMaxLength(450);
+            entity.Property(x => x.Action).HasColumnName("action").IsRequired().HasMaxLength(50);
+            entity.Property(x => x.EntityName).HasColumnName("entity_name").IsRequired().HasMaxLength(100);
+            entity.Property(x => x.EntityId).HasColumnName("entity_id").HasMaxLength(100);
+            entity.Property(x => x.OldValues).HasColumnName("old_values").HasColumnType("nvarchar(max)");
+            entity.Property(x => x.NewValues).HasColumnName("new_values").HasColumnType("nvarchar(max)");
+            entity.Property(x => x.IpAddress).HasColumnName("ip_address").HasMaxLength(45);
+            entity.Property(x => x.UserAgent).HasColumnName("user_agent").HasMaxLength(500);
+            entity.Property(x => x.CorrelationId).HasColumnName("correlation_id");
+            entity.Property(x => x.OccurredAt).HasColumnName("occurred_at").HasColumnType("datetime2(0)");
+
+            // Map relationship to ApplicationUser without navigation property in AuditLog
+            entity.HasOne<ApplicationUser>()
+                  .WithMany()
+                  .HasForeignKey(x => x.ActorUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(x => x.OccurredAt).HasDatabaseName("IX_AuditLogs_OccurredAt");
         });
     }
 }
