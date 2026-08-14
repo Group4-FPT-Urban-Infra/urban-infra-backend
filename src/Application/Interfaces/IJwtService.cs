@@ -5,7 +5,7 @@ namespace UrbanInfraSystem.Application.Interfaces;
 public interface IJwtService
 {
     /// <summary>Sinh access token (JWT) chứa claims userId, email, roles.</summary>
-    (string token, DateTime expiresAtUtc) GenerateAccessToken(string userId, string email, IEnumerable<string> roles);
+    (string token, DateTime expiresAtUtc) GenerateAccessToken(string userId, string email, IEnumerable<string> roles, int? departmentId = null);
 
     /// <summary>Sinh chuỗi refresh token ngẫu nhiên (không phải JWT), lưu ở DB.</summary>
     string GenerateRefreshToken();

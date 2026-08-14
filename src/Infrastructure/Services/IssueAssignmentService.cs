@@ -41,6 +41,7 @@ public class IssueAssignmentService : IIssueAssignmentService
 
         var current = await _context.IssueAssignments
             .Include(x => x.Department)
+            .Include(x => x.Members)
             .FirstOrDefaultAsync(x => x.IssueId == issueId && x.IsCurrent, cancellationToken);
         if (current?.DepartmentId == request.DepartmentId)
             throw new InvalidOperationException("Sự cố đã được phân công cho đơn vị này.");
@@ -53,14 +54,40 @@ public class IssueAssignmentService : IIssueAssignmentService
                 throw new UnauthorizedAccessException("Chỉ quản lý đơn vị đang phụ trách mới được chuyển sự cố.");
         }
 
+        // Lấy status "NEW" (Mới tiếp nhận) - StatusId = 1
+        var newStatus = await _context.IssueStatuses
+            .FirstOrDefaultAsync(x => x.StatusId == 1, cancellationToken)
+            ?? throw new InvalidOperationException("Không tìm thấy trạng thái 'Mới tiếp nhận'.");
+
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var now = DateTime.UtcNow;
+        var previousStatusId = issue.StatusId;
+
+        // Bước 1: Xóa các IssueAssignmentMember đã gán cho staff (nếu có)
+        if (current is not null && current.Members.Count > 0)
+        {
+            var removedMembers = current.Members.ToList();
+            _context.IssueAssignmentMembers.RemoveRange(removedMembers);
+            _context.IssueUpdates.Add(new IssueUpdate
+            {
+                IssueId = issueId,
+                CreatedBy = actorUserId,
+                FromStatusId = previousStatusId,
+                ToStatusId = previousStatusId,
+                Note = $"Đã hủy phân công {removedMembers.Count} nhân viên: {string.Join(", ", removedMembers.Select(m => m.UserId))}.",
+                IsSystemGenerated = false,
+                CreatedAt = now
+            });
+        }
+
+        // Đóng assignment cũ
         if (current is not null)
         {
             current.IsCurrent = false;
             current.EndedAt = now;
         }
 
+        // Tạo IssueAssignment mới cho department mới
         var assignment = new IssueAssignment
         {
             IssueId = issueId,
@@ -71,13 +98,17 @@ public class IssueAssignmentService : IIssueAssignmentService
             IsCurrent = true
         };
         _context.IssueAssignments.Add(assignment);
+
+        // Bước 2: Đổi status issue về "NEW" (Mới tiếp nhận)
+        issue.StatusId = newStatus.StatusId;
+        issue.ResolvedAt = null;
         _context.IssueUpdates.Add(new IssueUpdate
         {
             IssueId = issueId,
             CreatedBy = actorUserId,
-            FromStatusId = issue.StatusId,
-            ToStatusId = issue.StatusId,
-            Note = $"Đã chuyển đơn vị phụ trách từ '{current?.Department.DepartmentName ?? "Chưa phân công"}' sang '{department.DepartmentName}'." +
+            FromStatusId = previousStatusId,
+            ToStatusId = newStatus.StatusId,
+            Note = $"Đã chuyển đơn vị phụ trách từ '{current?.Department.DepartmentName ?? "Chưa phân công"}' sang '{department.DepartmentName}'. Trạng thái được đặt lại về '{newStatus.StatusName}'." +
                    (string.IsNullOrWhiteSpace(request.Note) ? string.Empty : $" Lý do: {request.Note.Trim()}"),
             IsSystemGenerated = false,
             CreatedAt = now

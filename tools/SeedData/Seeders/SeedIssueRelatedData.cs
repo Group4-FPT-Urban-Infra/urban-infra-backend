@@ -200,7 +200,7 @@ public class SeedIssueRelatedData
                 {
                     IssueId = issue.IssueId,
                     UploadedBy = issue.ReporterId,
-                    Kind = "image",
+                    Kind = "IMAGE",
                     FileUrl = imgUrl,
                     MimeType = imgUrl.EndsWith(".jpg") || imgUrl.EndsWith(".jpeg")
                         ? "image/jpeg"
