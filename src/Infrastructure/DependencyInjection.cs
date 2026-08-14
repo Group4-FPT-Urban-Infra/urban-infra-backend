@@ -21,7 +21,7 @@ public static class DependencyInjection
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection"),
-                x => x.UseNetTopologySuite()));
+                x => x.UseNetTopologySuite().MigrationsAssembly("UrbanInfraSystem.Infrastructure")));
 
         // --- Identity ---
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -88,7 +88,14 @@ public static class DependencyInjection
         services.AddScoped<IIssueService, IssueService>();
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
         services.AddScoped<IIssueAssignmentService, IssueAssignmentService>();
+        services.AddScoped<IIssueAssignmentMemberService, IssueAssignmentMemberService>();
         services.AddScoped<INotificationService, NotificationService>();
+
+        // --- Department Manager services ---
+        services.AddScoped<IDepartmentManagerDashboardService, DepartmentManagerDashboardService>();
+        services.AddScoped<IDepartmentManagerIssueService, DepartmentManagerIssueService>();
+        services.AddScoped<IDepartmentManagerSlaService, DepartmentManagerSlaService>();
+        services.AddScoped<IDepartmentManagerStaffService, DepartmentManagerStaffService>();
 
         // --- Background Hosted Services ---
         services.AddHostedService<UrbanInfraSystem.Infrastructure.BackgroundServices.SlaCheckBackgroundService>();

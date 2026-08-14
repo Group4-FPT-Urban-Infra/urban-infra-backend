@@ -30,6 +30,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<IssueAttachment> IssueAttachments => Set<IssueAttachment>();
     public DbSet<IssueUpdate> IssueUpdates => Set<IssueUpdate>();
     public DbSet<IssueAssignment> IssueAssignments => Set<IssueAssignment>();
+    public DbSet<IssueAssignmentMember> IssueAssignmentMembers => Set<IssueAssignmentMember>();
     public DbSet<IssueSla> IssueSlas => Set<IssueSla>();
     public DbSet<EscalationRule> EscalationRules => Set<EscalationRule>();
     public DbSet<EscalationEvent> EscalationEvents => Set<EscalationEvent>();
@@ -374,6 +375,31 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany()
                   .HasForeignKey(x => x.RoutingRuleId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 15b. IssueAssignmentMembers
+        builder.Entity<IssueAssignmentMember>(entity =>
+        {
+            entity.ToTable("IssueAssignmentMembers", table =>
+                table.HasCheckConstraint("CK_IssueAssignmentMembers_Status", "Status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED')"));
+            entity.HasKey(x => x.MemberId);
+            entity.Property(x => x.MemberId).ValueGeneratedOnAdd();
+            entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(x => x.AssignedBy).IsRequired().HasMaxLength(450);
+            entity.Property(x => x.Status).IsRequired().HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.Note).HasMaxLength(1000);
+            entity.Property(x => x.AssignedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.AcceptedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.EndedAt).HasColumnType("datetime2(0)");
+
+            entity.HasIndex(x => new { x.AssignmentId, x.UserId }).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.AssignedBy);
+
+            entity.HasOne(x => x.Assignment)
+                  .WithMany(x => x.Members)
+                  .HasForeignKey(x => x.AssignmentId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // 16. IssueSlas
