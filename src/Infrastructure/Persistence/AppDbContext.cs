@@ -36,6 +36,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<EscalationEvent> EscalationEvents => Set<EscalationEvent>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Report> Reports => Set<Report>();
+    public DbSet<ReportUpvote> ReportUpvotes => Set<ReportUpvote>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -198,7 +200,54 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasIndex(s => new { s.IssueTypeId, s.PriorityId }).IsUnique();
         });
 
-        // 10. IssueUpvotes
+        // 10. Reports - dữ liệu phản ánh do Citizen gửi.
+        builder.Entity<Report>(entity =>
+        {
+            entity.ToTable("Reports");
+            entity.HasKey(x => x.ReportId);
+            entity.Property(x => x.ReportId).ValueGeneratedOnAdd();
+            entity.Property(x => x.ReporterId).IsRequired().HasMaxLength(450);
+            entity.Property(x => x.PublicCode).IsRequired().HasMaxLength(30);
+            entity.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            entity.Property(x => x.Description).IsRequired().HasMaxLength(4000);
+            entity.Property(x => x.AddressText).HasMaxLength(500);
+            entity.Property(x => x.Latitude).HasPrecision(9, 6);
+            entity.Property(x => x.Longitude).HasPrecision(9, 6);
+            entity.Property(x => x.ReportedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.UpdatedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.PublicCode).IsUnique();
+            entity.HasIndex(x => x.ReporterId);
+            entity.HasIndex(x => x.AreaId);
+            entity.HasIndex(x => x.ReportedAt);
+            entity.HasOne(x => x.Area)
+                  .WithMany()
+                  .HasForeignKey(x => x.AreaId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>()
+                  .WithMany()
+                  .HasForeignKey(x => x.ReporterId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<ReportUpvote>(entity =>
+        {
+            entity.ToTable("ReportUpvotes");
+            entity.HasKey(x => new { x.ReportId, x.UserId });
+            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne(x => x.Report)
+                  .WithMany(x => x.Upvotes)
+                  .HasForeignKey(x => x.ReportId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ApplicationUser>()
+                  .WithMany()
+                  .HasForeignKey(x => x.UserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 11. IssueUpvotes (legacy, giữ tạm trong giai đoạn chuyển frontend sang ReportUpvotes)
         builder.Entity<IssueUpvote>(entity =>
         {
             entity.ToTable("IssueUpvotes");
@@ -214,12 +263,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasIndex(u => u.UserId).HasDatabaseName("IX_IssueUpvotes_UserId");
         });
 
-        // 11. Issues
+        // 12. Issues
         builder.Entity<Issue>(entity =>
         {
             entity.ToTable("Issues");
             entity.HasKey(i => i.IssueId);
             entity.Property(i => i.IssueId).ValueGeneratedOnAdd();
+            entity.Property(i => i.CustomTypeDescription).HasMaxLength(1000);
 
             entity.Property(i => i.PublicCode).IsRequired().HasMaxLength(30);
             entity.Property(i => i.ReporterId).IsRequired().HasMaxLength(450);
@@ -233,6 +283,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.Property(i => i.ClosedAt).HasColumnType("datetime2(0)");
 
             entity.HasIndex(i => i.PublicCode).IsUnique().HasDatabaseName("IX_Issues_PublicCode");
+            entity.HasIndex(i => i.ReportId).HasDatabaseName("IX_Issues_ReportId");
             entity.HasIndex(i => i.ReporterId).HasDatabaseName("IX_Issues_ReporterId");
             entity.HasIndex(i => i.StatusId).HasDatabaseName("IX_Issues_StatusId");
             entity.HasIndex(i => i.ReportedAt).HasDatabaseName("IX_Issues_ReportedAt");
@@ -247,6 +298,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasOne(i => i.Area)
                   .WithMany()
                   .HasForeignKey(i => i.AreaId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(i => i.Report)
+                  .WithMany(r => r.Issues)
+                  .HasForeignKey(i => i.ReportId)
                   .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(i => i.Priority)

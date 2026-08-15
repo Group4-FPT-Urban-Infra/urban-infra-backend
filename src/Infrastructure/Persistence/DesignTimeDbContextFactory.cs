@@ -13,7 +13,8 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
     {
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-        var connectionString = "Server=(localdb)\\mssqllocaldb;Database=UrbanInfraSystemDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+            ?? "Server=(localdb)\\mssqllocaldb;Database=UrbanInfraSystemDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
         optionsBuilder.UseSqlServer(connectionString, sqlOptions =>
         {
