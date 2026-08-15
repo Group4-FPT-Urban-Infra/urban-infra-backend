@@ -169,7 +169,9 @@ public class SeedIssues
             )
         };
 
-        var existingCodes = _db.Issues.Select(i => i.PublicCode).ToHashSet();
+        var existingCodes = _db.Reports.Select(i => i.PublicCode)
+            .Concat(_db.Issues.Select(i => i.PublicCode))
+            .ToHashSet();
         var haLongArea = areas.FirstOrDefault(a => a.AreaCode == "HL") ?? areas.First();
 
         var issues = new List<Issue>();
@@ -193,8 +195,26 @@ public class SeedIssues
                 : (DateTime?)null;
             var closedAt = status.StatusCode == "CLOSED" ? resolvedAt?.AddDays(random.Next(1, 3)) : null;
 
+            var upvoteCount = random.Next(0, 15);
+            var report = new Report
+            {
+                PublicCode = code,
+                ReporterId = reporterId,
+                AreaId = haLongArea.AreaId,
+                Title = title,
+                Description = desc,
+                AddressText = address,
+                Latitude = lat,
+                Longitude = lon,
+                ReportedAt = reportedAt,
+                CreatedAt = reportedAt,
+                IsPublic = true,
+                UpvoteCount = upvoteCount
+            };
+
             issues.Add(new Issue
             {
+                Report = report,
                 PublicCode = code,
                 ReporterId = reporterId,
                 IssueTypeId = issueType.IssueTypeId,
@@ -210,7 +230,7 @@ public class SeedIssues
                 ResolvedAt = resolvedAt,
                 ClosedAt = closedAt,
                 IsPublic = true,
-                UpvoteCount = random.Next(0, 15)
+                UpvoteCount = upvoteCount
             });
         }
 

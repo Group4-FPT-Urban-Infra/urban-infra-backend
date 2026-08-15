@@ -467,11 +467,32 @@ public class IssueService : IIssueService
             var randomSuffix = Guid.NewGuid().ToString("N")[..6].ToUpper();
             publicCode = $"ISS-{DateTime.UtcNow:yyyyMMdd}-{randomSuffix}";
         }
-        while (await _context.Issues.AnyAsync(i => i.PublicCode == publicCode, cancellationToken));
+        while (await _context.Reports.AnyAsync(r => r.PublicCode == publicCode, cancellationToken) ||
+               await _context.Issues.AnyAsync(i => i.PublicCode == publicCode, cancellationToken));
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var reportedAt = DateTime.UtcNow;
+        var report = new Report
+        {
+            ReporterId = reporterId,
+            AreaId = area.AreaId,
+            PublicCode = publicCode,
+            Title = request.Title.Trim(),
+            Description = request.Description.Trim(),
+            AddressText = request.AddressText?.Trim(),
+            Latitude = request.Latitude,
+            Longitude = request.Longitude,
+            UpvoteCount = 0,
+            IsPublic = true,
+            ReportedAt = reportedAt,
+            CreatedAt = reportedAt
+        };
+        _context.Reports.Add(report);
+        await _context.SaveChangesAsync(cancellationToken);
+
         var issue = new Issue
         {
+            ReportId = report.ReportId,
             PublicCode = publicCode,
             ReporterId = reporterId,
             IssueTypeId = issueType.IssueTypeId,
@@ -485,7 +506,7 @@ public class IssueService : IIssueService
             Longitude = request.Longitude,
             UpvoteCount = 0,
             IsPublic = true,
-            ReportedAt = DateTime.UtcNow
+            ReportedAt = reportedAt
         };
 
         _context.Issues.Add(issue);

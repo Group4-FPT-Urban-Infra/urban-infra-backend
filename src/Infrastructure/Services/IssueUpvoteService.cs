@@ -26,6 +26,7 @@ public class IssueUpvoteService : IIssueUpvoteService
     {
         // 1. Kiểm tra sự cố tồn tại
         var issue = await _db.Issues
+            .Include(i => i.Report)
             .FirstOrDefaultAsync(i => i.IssueId == issueId);
 
         if (issue == null)
@@ -38,8 +39,8 @@ public class IssueUpvoteService : IIssueUpvoteService
         }
 
         // 2. Kiểm tra đã upvote chưa (idempotent)
-        var existingUpvote = await _db.IssueUpvotes
-            .FirstOrDefaultAsync(u => u.IssueId == issueId && u.UserId == userId);
+        var existingUpvote = await _db.ReportUpvotes
+            .FirstOrDefaultAsync(u => u.ReportId == issue.ReportId && u.UserId == userId);
 
         if (existingUpvote != null)
         {
@@ -48,18 +49,19 @@ public class IssueUpvoteService : IIssueUpvoteService
         }
 
         // 3. Tạo upvote mới
-        var upvote = new IssueUpvote
+        var upvote = new ReportUpvote
         {
-            IssueId = issueId,
+            ReportId = issue.ReportId,
             UserId = userId,
             CreatedAt = DateTime.UtcNow
         };
 
-        _db.IssueUpvotes.Add(upvote);
+        _db.ReportUpvotes.Add(upvote);
 
         // 4. Tăng upvote_count trên Issue
-        issue.UpvoteCount = await _db.IssueUpvotes
-            .CountAsync(u => u.IssueId == issueId) + 1;
+        issue.Report.UpvoteCount = await _db.ReportUpvotes
+            .CountAsync(u => u.ReportId == issue.ReportId) + 1;
+        issue.UpvoteCount = issue.Report.UpvoteCount; // compatibility for existing readers
 
         await _db.SaveChangesAsync();
 
@@ -81,6 +83,7 @@ public class IssueUpvoteService : IIssueUpvoteService
     {
         // 1. Kiểm tra sự cố tồn tại
         var issue = await _db.Issues
+            .Include(i => i.Report)
             .FirstOrDefaultAsync(i => i.IssueId == issueId);
 
         if (issue == null)
@@ -93,8 +96,8 @@ public class IssueUpvoteService : IIssueUpvoteService
         }
 
         // 2. Kiểm tra đã upvote chưa
-        var existingUpvote = await _db.IssueUpvotes
-            .FirstOrDefaultAsync(u => u.IssueId == issueId && u.UserId == userId);
+        var existingUpvote = await _db.ReportUpvotes
+            .FirstOrDefaultAsync(u => u.ReportId == issue.ReportId && u.UserId == userId);
 
         if (existingUpvote == null)
         {
@@ -103,11 +106,12 @@ public class IssueUpvoteService : IIssueUpvoteService
         }
 
         // 3. Xóa upvote
-        _db.IssueUpvotes.Remove(existingUpvote);
+        _db.ReportUpvotes.Remove(existingUpvote);
 
         // 4. Giảm upvote_count trên Issue
-        issue.UpvoteCount = Math.Max(0, await _db.IssueUpvotes
-            .CountAsync(u => u.IssueId == issueId) - 1);
+        issue.Report.UpvoteCount = Math.Max(0, await _db.ReportUpvotes
+            .CountAsync(u => u.ReportId == issue.ReportId) - 1);
+        issue.UpvoteCount = issue.Report.UpvoteCount;
 
         await _db.SaveChangesAsync();
 
@@ -128,8 +132,7 @@ public class IssueUpvoteService : IIssueUpvoteService
     public async Task<ApiResponse<UpvoteResponse>> GetUpvoteStatusAsync(long issueId, string? userId)
     {
         // Kiểm tra sự cố tồn tại
-        var issueExists = await _db.Issues
-            .AnyAsync(i => i.IssueId == issueId);
+        var issueExists = await _db.Issues.AnyAsync(i => i.IssueId == issueId);
 
         if (!issueExists)
         {
@@ -148,11 +151,16 @@ public class IssueUpvoteService : IIssueUpvoteService
     /// </summary>
     private async Task<ApiResponse<UpvoteResponse>> BuildUpvoteResponseAsync(long issueId, string? userId)
     {
-        var upvoteCount = await _db.IssueUpvotes
-            .CountAsync(u => u.IssueId == issueId);
+        var reportId = await _db.Issues
+            .Where(i => i.IssueId == issueId)
+            .Select(i => i.ReportId)
+            .SingleAsync();
 
-        var hasUpvoted = !string.IsNullOrEmpty(userId) && await _db.IssueUpvotes
-            .AnyAsync(u => u.IssueId == issueId && u.UserId == userId);
+        var upvoteCount = await _db.ReportUpvotes
+            .CountAsync(u => u.ReportId == reportId);
+
+        var hasUpvoted = !string.IsNullOrEmpty(userId) && await _db.ReportUpvotes
+            .AnyAsync(u => u.ReportId == reportId && u.UserId == userId);
 
         return new ApiResponse<UpvoteResponse>
         {

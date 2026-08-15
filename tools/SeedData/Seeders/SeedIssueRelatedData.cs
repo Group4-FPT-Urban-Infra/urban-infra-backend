@@ -96,9 +96,9 @@ public class SeedIssueRelatedData
 
     private async Task SeedIssueUpvotesAsync()
     {
-        if (_db.IssueUpvotes.Any())
+        if (_db.ReportUpvotes.Any())
         {
-            _logger.LogInformation("IssueUpvotes already exist, skipping.");
+            _logger.LogInformation("ReportUpvotes already exist, skipping.");
             return;
         }
 
@@ -113,7 +113,7 @@ public class SeedIssueRelatedData
             return;
         }
 
-        var upvotes = new List<IssueUpvote>();
+        var upvotes = new List<ReportUpvote>();
         var random = new Random(42);
 
         foreach (var issue in issues)
@@ -126,12 +126,12 @@ public class SeedIssueRelatedData
             foreach (var voter in upvoters)
             {
                 // Check if already upvoted
-                if (_db.IssueUpvotes.Any(u => u.IssueId == issue.IssueId && u.UserId == voter.Id))
+                if (_db.ReportUpvotes.Any(u => u.ReportId == issue.ReportId && u.UserId == voter.Id))
                     continue;
 
-                upvotes.Add(new IssueUpvote
+                upvotes.Add(new ReportUpvote
                 {
-                    IssueId = issue.IssueId,
+                    ReportId = issue.ReportId,
                     UserId = voter.Id,
                     CreatedAt = issue.ReportedAt.AddHours(random.Next(1, 48))
                 });
@@ -140,9 +140,9 @@ public class SeedIssueRelatedData
 
         if (upvotes.Count > 0)
         {
-            _db.IssueUpvotes.AddRange(upvotes);
+            _db.ReportUpvotes.AddRange(upvotes);
             await _db.SaveChangesAsync();
-            _logger.LogInformation("Seeded {Count} issue upvotes.", upvotes.Count);
+            _logger.LogInformation("Seeded {Count} report upvotes.", upvotes.Count);
         }
     }
 
