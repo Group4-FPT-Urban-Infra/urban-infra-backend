@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using UrbanInfraSystem.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using UrbanInfraSystem.Infrastructure.Persistence;
 namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814031959_UpdateAuditLogsSchema")]
+    partial class UpdateAuditLogsSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -614,61 +617,6 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.ToTable("IssueAssignments", null, t =>
                         {
                             t.HasCheckConstraint("CK_IssueAssignments_Method", "AssignmentMethod IN ('AUTO', 'MANUAL', 'TRANSFER', 'ESCALATION')");
-                        });
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAssignmentMember", b =>
-                {
-                    b.Property<long>("MemberId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("MemberId"));
-
-                    b.Property<DateTime?>("AcceptedAt")
-                        .HasColumnType("datetime2(0)");
-
-                    b.Property<DateTime>("AssignedAt")
-                        .HasColumnType("datetime2(0)");
-
-                    b.Property<string>("AssignedBy")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<long>("AssignmentId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("EndedAt")
-                        .HasColumnType("datetime2(0)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("MemberId");
-
-                    b.HasIndex("AssignedBy");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("AssignmentId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("IssueAssignmentMembers", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_IssueAssignmentMembers_Status", "Status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED')");
                         });
                 });
 
@@ -1475,17 +1423,6 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.Navigation("RoutingRule");
                 });
 
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAssignmentMember", b =>
-                {
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.IssueAssignment", "Assignment")
-                        .WithMany("Members")
-                        .HasForeignKey("AssignmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Assignment");
-                });
-
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAttachment", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
@@ -1658,11 +1595,6 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.Navigation("Updates");
 
                     b.Navigation("Upvotes");
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueAssignment", b =>
-                {
-                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssuePriority", b =>

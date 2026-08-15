@@ -139,6 +139,15 @@ public class IssueAssignmentService : IIssueAssignmentService
             });
         }
 
+        _context.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = actorUserId,
+            Action = "Reassign",
+            EntityName = "Issues",
+            EntityId = issueId.ToString(),
+            OccurredAt = now
+        });
+
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         assignment.Department = department;

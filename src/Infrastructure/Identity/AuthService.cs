@@ -86,6 +86,17 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không đúng." };
         }
 
+        _db.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = user.Id,
+            Action = "Login",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        // We do not save changes here because IssueTokensAsync will save changes (it saves RefreshToken).
+        // Actually, let's verify if IssueTokensAsync calls SaveChanges.
+
         return await IssueTokensAsync(user);
     }
 

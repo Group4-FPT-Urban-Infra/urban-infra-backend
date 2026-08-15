@@ -66,6 +66,319 @@ public class IssueService : IIssueService
         };
     }
 
+    // ─── Helper: tính KpiItem từ giá trị hiện tại và kỳ trước ───────────────
+    private static KpiItem BuildKpiItem(int current, int previous)
+    {
+        double? trendPercent = null;
+        var direction = "stable";
+
+        if (previous > 0)
+        {
+            trendPercent = Math.Round((current - previous) / (double)previous * 100, 1);
+            direction = trendPercent > 0 ? "up" : trendPercent < 0 ? "down" : "stable";
+        }
+        else if (current > 0)
+        {
+            trendPercent = 100;
+            direction = "up";
+        }
+
+        return new KpiItem
+        {
+            Value = current,
+            TrendPercent = trendPercent,
+            TrendDirection = direction
+        };
+    }
+
+    public async Task<ApiResponse<AdminKpiResponse>> GetAdminKpiAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // ── Mốc thời gian ────────────────────────────────────────────────────
+        var now = DateTime.UtcNow;
+
+        // Tuần này: từ thứ Hai (ISO) đến nay
+        var daysFromMonday = ((int)now.DayOfWeek + 6) % 7; // Mon = 0
+        var thisWeekStart = now.Date.AddDays(-daysFromMonday);
+        var lastWeekStart = thisWeekStart.AddDays(-7);
+        var lastWeekEnd   = thisWeekStart;
+
+        // Hôm nay & hôm qua
+        var todayStart     = now.Date;
+        var yesterdayStart = todayStart.AddDays(-1);
+
+        var resolvedCodes = new[] { "RESOLVED", "CLOSED", "REJECTED" };
+
+        // ── 1. Total Users (IsActive = true) ─────────────────────────────────
+        var totalUsersNow  = await _context.Users.CountAsync(u => u.IsActive, cancellationToken);
+        // Proxy cho "tuần trước": user tạo trước tuần này (đây là con số có tính ổn định hơn)
+        var totalUsersPrev = await _context.Users
+            .CountAsync(u => u.IsActive && u.CreatedAtUtc < thisWeekStart, cancellationToken);
+        var totalUsersCurrent = totalUsersNow; // all active users là hiện tại
+        // Trend: user mới tuần này vs tuần trước
+        var newUsersThisWeek = await _context.Users
+            .CountAsync(u => u.CreatedAtUtc >= thisWeekStart, cancellationToken);
+        var newUsersLastWeek = await _context.Users
+            .CountAsync(u => u.CreatedAtUtc >= lastWeekStart && u.CreatedAtUtc < lastWeekEnd, cancellationToken);
+
+        // ── 2. Open Incidents ─────────────────────────────────────────────────
+        var openNow = await _context.Issues
+            .CountAsync(i => !i.IsArchived && !resolvedCodes.Contains(i.Status.StatusCode), cancellationToken);
+        // Tuần trước: sự cố đang mở tại thời điểm cuối tuần trước (gần đúng bằng cách đếm mở trước lastWeekEnd & chưa resolved hoặc resolved sau lastWeekEnd)
+        var openLastWeek = await _context.Issues
+            .CountAsync(i => !i.IsArchived
+                && i.ReportedAt < lastWeekEnd
+                && (!resolvedCodes.Contains(i.Status.StatusCode)
+                    || (i.ResolvedAt.HasValue && i.ResolvedAt >= lastWeekEnd)),
+            cancellationToken);
+
+        // ── 3. Active Departments ─────────────────────────────────────────────
+        var deptNow  = await _context.Departments.CountAsync(d => d.IsActive, cancellationToken);
+        var deptPrev = await _context.Departments
+            .CountAsync(d => d.IsActive && d.CreatedAt < thisWeekStart, cancellationToken);
+
+        // ── 4. Resolved This Week ─────────────────────────────────────────────
+        var resolvedThisWeek = await _context.Issues
+            .CountAsync(i => !i.IsArchived && i.ResolvedAt.HasValue && i.ResolvedAt >= thisWeekStart, cancellationToken);
+        var resolvedLastWeek = await _context.Issues
+            .CountAsync(i => !i.IsArchived && i.ResolvedAt.HasValue
+                && i.ResolvedAt >= lastWeekStart && i.ResolvedAt < lastWeekEnd, cancellationToken);
+
+        // ── 5. New Today (vs hôm qua) ─────────────────────────────────────────
+        var newToday     = await _context.Issues
+            .CountAsync(i => !i.IsArchived && i.ReportedAt >= todayStart, cancellationToken);
+        var newYesterday = await _context.Issues
+            .CountAsync(i => !i.IsArchived && i.ReportedAt >= yesterdayStart && i.ReportedAt < todayStart, cancellationToken);
+
+        // ── 6. Critical Incidents (open + priority CRITICAL) ──────────────────
+        var criticalNow = await _context.Issues
+            .CountAsync(i => !i.IsArchived
+                && !resolvedCodes.Contains(i.Status.StatusCode)
+                && i.Priority.PriorityCode == "CRITICAL", cancellationToken);
+        var criticalLastWeek = await _context.Issues
+            .CountAsync(i => !i.IsArchived
+                && i.ReportedAt < lastWeekEnd
+                && i.Priority.PriorityCode == "CRITICAL"
+                && (!resolvedCodes.Contains(i.Status.StatusCode)
+                    || (i.ResolvedAt.HasValue && i.ResolvedAt >= lastWeekEnd)),
+            cancellationToken);
+
+        // ── Build response ────────────────────────────────────────────────────
+        return new ApiResponse<AdminKpiResponse>
+        {
+            Success = true,
+            Data = new AdminKpiResponse
+            {
+                TotalUsers         = BuildKpiItem(totalUsersCurrent, totalUsersPrev),
+                OpenIncidents      = BuildKpiItem(openNow,          openLastWeek),
+                ActiveDepartments  = BuildKpiItem(deptNow,          deptPrev),
+                ResolvedThisWeek   = BuildKpiItem(resolvedThisWeek, resolvedLastWeek),
+                NewToday           = BuildKpiItem(newToday,         newYesterday),
+                CriticalIncidents  = BuildKpiItem(criticalNow,      criticalLastWeek),
+            }
+        };
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<TrendDataPoint>>> GetIncidentTrendsAsync(
+        string period,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        List<TrendDataPoint> points;
+
+        switch (period.Trim())
+        {
+            // ── ThisWeek: 7 ngày (Mon → Sun của tuần hiện tại) ────────────────
+            case "ThisWeek":
+            {
+                var daysFromMonday = ((int)now.DayOfWeek + 6) % 7;
+                var weekStart = now.Date.AddDays(-daysFromMonday);
+
+                // Group theo DayOfWeek (0=Sun,1=Mon,...6=Sat) trong phạm vi tuần
+                var raw = await _context.Issues
+                    .Where(i => !i.IsArchived && i.ReportedAt >= weekStart && i.ReportedAt < weekStart.AddDays(7))
+                    .GroupBy(i => i.ReportedAt.Date)
+                    .Select(g => new { Date = g.Key, Count = g.Count() })
+                    .ToListAsync(cancellationToken);
+
+                var dayLabels = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+                points = Enumerable.Range(0, 7)
+                    .Select(offset =>
+                    {
+                        var date = weekStart.AddDays(offset);
+                        var label = dayLabels[offset];
+                        var count = raw.FirstOrDefault(r => r.Date == date)?.Count ?? 0;
+                        return new TrendDataPoint { Label = label, Value = count };
+                    })
+                    .ToList();
+                break;
+            }
+
+            // ── ThisMonth: từng ngày trong tháng hiện tại ─────────────────────
+            case "ThisMonth":
+            {
+                var monthStart = new DateTime(now.Year, now.Month, 1);
+                var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
+                var monthEnd = monthStart.AddMonths(1);
+
+                var raw = await _context.Issues
+                    .Where(i => !i.IsArchived && i.ReportedAt >= monthStart && i.ReportedAt < monthEnd)
+                    .GroupBy(i => i.ReportedAt.Date)
+                    .Select(g => new { Date = g.Key, Count = g.Count() })
+                    .ToListAsync(cancellationToken);
+
+                points = Enumerable.Range(1, daysInMonth)
+                    .Select(day =>
+                    {
+                        var date = new DateTime(now.Year, now.Month, day);
+                        var count = raw.FirstOrDefault(r => r.Date == date)?.Count ?? 0;
+                        return new TrendDataPoint { Label = day.ToString(), Value = count };
+                    })
+                    .ToList();
+                break;
+            }
+
+            // ── ThisYear: 12 tháng ────────────────────────────────────────────
+            case "ThisYear":
+            default:
+            {
+                var yearStart = new DateTime(now.Year, 1, 1);
+                var yearEnd   = yearStart.AddYears(1);
+
+                var raw = await _context.Issues
+                    .Where(i => !i.IsArchived && i.ReportedAt >= yearStart && i.ReportedAt < yearEnd)
+                    .GroupBy(i => i.ReportedAt.Month)
+                    .Select(g => new { Month = g.Key, Count = g.Count() })
+                    .ToListAsync(cancellationToken);
+
+                var monthLabels = new[] { "Jan","Feb","Mar","Apr","May","Jun",
+                                          "Jul","Aug","Sep","Oct","Nov","Dec" };
+                points = Enumerable.Range(1, 12)
+                    .Select(m => new TrendDataPoint
+                    {
+                        Label = monthLabels[m - 1],
+                        Value = raw.FirstOrDefault(r => r.Month == m)?.Count ?? 0
+                    })
+                    .ToList();
+                break;
+            }
+        }
+
+        return new ApiResponse<IReadOnlyList<TrendDataPoint>>
+        {
+            Success = true,
+            Data = points
+        };
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<CategoryDistributionPoint>>> GetCategoryDistributionAsync(CancellationToken cancellationToken = default)
+    {
+        var issues = await _context.Issues
+            .Include(i => i.IssueType)
+            .Where(i => !i.IsArchived)
+            .ToListAsync(cancellationToken);
+
+        var totalIssues = issues.Count;
+        if (totalIssues == 0)
+        {
+            return new ApiResponse<IReadOnlyList<CategoryDistributionPoint>>
+            {
+                Success = true,
+                Data = new List<CategoryDistributionPoint>()
+            };
+        }
+
+        var distribution = issues
+            .GroupBy(i => i.IssueType.TypeName)
+            .Select(g => new CategoryDistributionPoint
+            {
+                Category = g.Key,
+                Count = g.Count(),
+                Percentage = Math.Round((double)g.Count() / totalIssues * 100, 1)
+            })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        return new ApiResponse<IReadOnlyList<CategoryDistributionPoint>>
+        {
+            Success = true,
+            Data = distribution
+        };
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<HeatmapDataPoint>>> GetIncidentHeatmapAsync(string timeframe, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var startDate = timeframe.ToLower() switch
+        {
+            "24h" => now.AddHours(-24),
+            "30d" => now.AddDays(-30),
+            "7d" or _ => now.AddDays(-7)
+        };
+
+        var issues = await _context.Issues
+            .Include(i => i.Area)
+            .Include(i => i.Priority)
+            .Where(i => !i.IsArchived && i.ReportedAt >= startDate)
+            .ToListAsync(cancellationToken);
+
+        // Group by Area
+        var heatmapData = issues
+            .GroupBy(i => new { i.Area.AreaCode, i.Area.AreaName })
+            .Select(g =>
+            {
+                // Find dominant severity in the group
+                var dominantSeverity = g.GroupBy(i => i.Priority.PriorityCode)
+                    .OrderByDescending(x => x.Count())
+                    .ThenBy(x => x.First().Priority.SeverityRank) // tie-breaker: higher severity
+                    .Select(x => x.Key)
+                    .FirstOrDefault() ?? "LOW";
+
+                return new HeatmapDataPoint
+                {
+                    DistrictId = g.Key.AreaCode,
+                    DistrictName = g.Key.AreaName,
+                    Severity = dominantSeverity,
+                    Count = g.Count()
+                };
+            })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        return new ApiResponse<IReadOnlyList<HeatmapDataPoint>>
+        {
+            Success = true,
+            Data = heatmapData
+        };
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<AuditLogResponse>>> GetRecentAuditLogsAsync(int limit = 10, CancellationToken cancellationToken = default)
+    {
+        var logs = await _context.AuditLogs
+            .OrderByDescending(u => u.OccurredAt)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        // Fetch user emails manually if needed
+        var userIds = logs.Where(l => l.ActorUserId != null).Select(l => l.ActorUserId).Distinct().ToList();
+        var users = await _context.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Email, cancellationToken);
+
+        var response = logs.Select(l => new AuditLogResponse
+        {
+            Id = l.Id,
+            Title = l.Action + (l.EntityName != null ? $" on {l.EntityName}" : ""),
+            Subtitle = l.ActorUserId != null && users.ContainsKey(l.ActorUserId) ? $"User: {users[l.ActorUserId]}" : "System Auto-Alert",
+            Timestamp = l.OccurredAt,
+            Type = "info"
+        }).ToList();
+
+        return new ApiResponse<IReadOnlyList<AuditLogResponse>>
+        {
+            Success = true,
+            Data = response
+        };
+    }
+
     public async Task<ApiResponse<IssueDetailResponse>> CreateIssueAsync(
         CreateIssueFormRequest request,
         string reporterId,
@@ -289,6 +602,15 @@ public class IssueService : IIssueService
                 CreatedAt = DateTime.UtcNow
             });
         }
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = reporterId,
+            Action = "Create Issue",
+            EntityName = "Issues",
+            EntityId = issue.PublicCode,
+            OccurredAt = DateTime.UtcNow
+        });
 
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
