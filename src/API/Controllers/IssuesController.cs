@@ -4,8 +4,9 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using UrbanInfraSystem.Application.DTOs.Issues;
+using UrbanInfraSystem.Application.DTOs.IssueAssignmentMembers;
 using UrbanInfraSystem.Application.DTOs.IssueAssignments;
+using UrbanInfraSystem.Application.DTOs.Issues;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Enums;
 
@@ -23,17 +24,20 @@ public class IssuesController : ControllerBase
     private readonly IIssueUpvoteService _upvoteService;
     private readonly ICurrentUserService _currentUser;
     private readonly IIssueAssignmentService _assignmentService;
+    private readonly IIssueAssignmentMemberService _memberService;
 
     public IssuesController(
         IIssueService issueService,
         IIssueUpvoteService upvoteService,
         ICurrentUserService currentUser,
-        IIssueAssignmentService assignmentService)
+        IIssueAssignmentService assignmentService,
+        IIssueAssignmentMemberService memberService)
     {
         _issueService = issueService;
         _upvoteService = upvoteService;
         _currentUser = currentUser;
         _assignmentService = assignmentService;
+        _memberService = memberService;
     }
 
     /// <summary>Tạo báo cáo sự cố mới kèm hình ảnh.</summary>
@@ -88,10 +92,10 @@ public class IssuesController : ControllerBase
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<NearbyIssueResponse>>>> FindNearby(
         [FromQuery] FindNearbyIssuesRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
         var userId = _currentUser.UserId;
-        var result = await _issueService.FindNearbyIssuesAsync(request, userId, cancellationToken);
+        var result = await _issueService.FindNearbyIssuesAsync(request, userId, ct);
         return Ok(result);
     }
 
@@ -258,9 +262,9 @@ public class IssuesController : ControllerBase
     }
 
     /// <summary>Admin hoặc quản lý đơn vị đang phụ trách chuyển sự cố sang đơn vị khác.</summary>
-    [HttpPut("{issueId:long}/reassign")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentStaff}")]
-    public async Task<ActionResult<IssueAssignmentResponse>> Reassign(
+    [HttpPost("{issueId:long}/re-route")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentManager}")]
+    public async Task<ActionResult<IssueAssignmentResponse>> ReRoute(
         [FromRoute] long issueId,
         [FromBody] ReassignIssueRequest request,
         CancellationToken cancellationToken)
@@ -276,5 +280,126 @@ public class IssuesController : ControllerBase
         catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
         catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
+    }
+
+    /// <summary>Lấy danh sách nhân viên được gán vào một phân công cụ thể.</summary>
+    [HttpGet("{issueId:long}/assignments/{assignmentId:long}/members")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentStaff}")]
+    [ProducesResponseType(typeof(IReadOnlyList<IssueAssignmentMemberResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<IssueAssignmentMemberResponse>>> GetAssignmentMembers(
+        [FromRoute] long issueId,
+        [FromRoute] long assignmentId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _memberService.GetByAssignmentAsync(assignmentId, cancellationToken);
+        return result is null
+            ? NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = "Không tìm thấy phân công." })
+            : Ok(result);
+    }
+
+    /// <summary>Gán một nhân viên vào phân công (chỉ Manager hoặc Admin).</summary>
+    [HttpPost("{issueId:long}/assignments/{assignmentId:long}/members")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentStaff}")]
+    [ProducesResponseType(typeof(IssueAssignmentMemberResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<IssueAssignmentMemberResponse>> AssignMember(
+        [FromRoute] long issueId,
+        [FromRoute] long assignmentId,
+        [FromBody] AssignMemberRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
+        try
+        {
+            var result = await _memberService.AssignMemberAsync(assignmentId, request, userId, cancellationToken);
+            return CreatedAtAction(nameof(GetAssignmentMembers), new { issueId, assignmentId }, result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Title = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = ex.Message });
+        }
+    }
+
+    /// <summary>Cập nhật trạng thái của nhân viên trong phân công (chấp nhận, từ chối, hoàn thành).</summary>
+    [HttpPut("{issueId:long}/assignments/{assignmentId:long}/members/{memberId:long}/status")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentStaff}")]
+    [ProducesResponseType(typeof(IssueAssignmentMemberResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IssueAssignmentMemberResponse>> UpdateMemberStatus(
+        [FromRoute] long issueId,
+        [FromRoute] long assignmentId,
+        [FromRoute] long memberId,
+        [FromBody] UpdateMemberStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
+        try
+        {
+            var result = await _memberService.UpdateMemberStatusAsync(memberId, request, userId, cancellationToken);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ProblemDetails { Status = StatusCodes.Status400BadRequest, Title = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Status = StatusCodes.Status403Forbidden, Title = ex.Message });
+        }
+    }
+
+    /// <summary>Xóa nhân viên khỏi phân công.</summary>
+    [HttpDelete("{issueId:long}/assignments/{assignmentId:long}/members/{memberId:long}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentStaff}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RemoveMember(
+        [FromRoute] long issueId,
+        [FromRoute] long assignmentId,
+        [FromRoute] long memberId,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
+        try
+        {
+            await _memberService.RemoveMemberAsync(memberId, userId, cancellationToken);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = ex.Message });
+        }
     }
 }

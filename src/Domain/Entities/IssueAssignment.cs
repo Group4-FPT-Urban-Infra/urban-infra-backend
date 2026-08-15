@@ -16,4 +16,5 @@ public class IssueAssignment
     public Issue Issue { get; set; } = default!;
     public Department Department { get; set; } = default!;
     public RoutingRule? RoutingRule { get; set; }
+    public ICollection<IssueAssignmentMember> Members { get; set; } = new List<IssueAssignmentMember>();
 }

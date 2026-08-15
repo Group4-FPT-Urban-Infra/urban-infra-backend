@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using UrbanInfraSystem.Application.DTOs.UserManagement;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Enums;
+using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Identity;
@@ -17,17 +18,20 @@ public class UserManagementService : IUserManagementService
     private readonly RoleManager<ApplicationRole> _roleManager;
     private readonly AppDbContext _dbContext;
     private readonly IDepartmentMemberService _departmentMemberService;
+    private readonly ICurrentUserService _currentUser;
 
     public UserManagementService(
         UserManager<ApplicationUser> userManager,
         RoleManager<ApplicationRole> roleManager,
         AppDbContext dbContext,
-        IDepartmentMemberService departmentMemberService)
+        IDepartmentMemberService departmentMemberService,
+        ICurrentUserService currentUser)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _dbContext = dbContext;
         _departmentMemberService = departmentMemberService;
+        _currentUser = currentUser;
     }
 
     // ------------------------------------------------------------------ //
@@ -172,6 +176,16 @@ public class UserManagementService : IUserManagementService
                 }, ct);
         }
 
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Create User",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
+
         var roles = await _userManager.GetRolesAsync(user);
         return MapToResponse(user, roles, request.Role == Roles.DepartmentStaff ? request.DepartmentId : null);
     }
@@ -228,6 +242,16 @@ public class UserManagementService : IUserManagementService
                     }, ct);
         }
 
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Update User",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
+
         var roles = await _userManager.GetRolesAsync(user);
         return MapToResponse(user, roles, targetDepartmentId);
     }
@@ -244,6 +268,20 @@ public class UserManagementService : IUserManagementService
 
         user.IsActive = isActive;
         var result = await _userManager.UpdateAsync(user);
+        
+        if (result.Succeeded)
+        {
+            _dbContext.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = _currentUser.UserId,
+                Action = isActive ? "Unlock User" : "Lock User",
+                EntityName = "Users",
+                EntityId = user.Id,
+                OccurredAt = DateTime.UtcNow
+            });
+            await _dbContext.SaveChangesAsync(ct);
+        }
+
         return result.Succeeded;
     }
 
@@ -268,6 +306,16 @@ public class UserManagementService : IUserManagementService
             throw new InvalidOperationException(
                 "Không thể đặt mật khẩu mới: " + string.Join("; ", addResult.Errors.Select(e => e.Description)));
 
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Reset Password",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
+
         return true;
     }
 
@@ -284,6 +332,16 @@ public class UserManagementService : IUserManagementService
         if (!result.Succeeded)
             throw new InvalidOperationException(
                 "Không thể xóa tài khoản: " + string.Join("; ", result.Errors.Select(e => e.Description)));
+
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Delete User",
+            EntityName = "Users",
+            EntityId = userId,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
 
         return true;
     }

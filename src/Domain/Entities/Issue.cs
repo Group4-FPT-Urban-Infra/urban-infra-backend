@@ -1,3 +1,6 @@
+using System;
+using UrbanInfraSystem.Domain.Common;
+
 namespace UrbanInfraSystem.Domain.Entities;
 
 /// <summary>
@@ -7,6 +10,12 @@ public class Issue
 {
     /// <summary>ID tự tăng của sự cố.</summary>
     public long IssueId { get; set; }
+
+    /// <summary>Phản ánh gốc của công dân chứa Issue này.</summary>
+    public long ReportId { get; set; }
+
+    /// <summary>Mô tả loại tự do khi issue_type là OTHER.</summary>
+    public string? CustomTypeDescription { get; set; }
 
     /// <summary>Mã công khai để người dân tra cứu (VD: ISS-2026-000001).</summary>
     public string PublicCode { get; set; } = default!;
@@ -50,6 +59,9 @@ public class Issue
     /// <summary>Đánh dấu sự cố có hiển thị công khai trên bản đồ không.</summary>
     public bool IsPublic { get; set; } = true;
 
+    /// <summary>Đánh dấu sự cố đã bị ẩn (archive).</summary>
+    public bool IsArchived { get; set; } = false;
+
     /// <summary>Thời điểm công dân tạo báo cáo.</summary>
     public DateTime ReportedAt { get; set; } = DateTime.UtcNow;
 
@@ -63,6 +75,9 @@ public class Issue
     public long? DuplicateOfIssueId { get; set; }
 
     // ==================== Navigation Properties ====================
+
+    /// <summary>Phản ánh gốc.</summary>
+    public Report Report { get; set; } = default!;
 
     /// <summary>Loại sự cố.</summary>
     public IssueType IssueType { get; set; } = default!;

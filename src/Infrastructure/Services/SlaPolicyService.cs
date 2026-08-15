@@ -20,15 +20,40 @@ public class SlaPolicyService : ISlaPolicyService
         _context = context;
     }
 
-    public async Task<IReadOnlyList<SlaPolicyResponse>> GetAllAsync(CancellationToken ct = default)
+    public async Task<UrbanInfraSystem.Application.DTOs.UserManagement.PagedResult<SlaPolicyResponse>> GetAllAsync(SearchSlaPoliciesRequest request, CancellationToken ct = default)
     {
-        var list = await _context.SlaPolicies
+        var query = _context.SlaPolicies
             .Include(s => s.IssueType)
             .Include(s => s.IssuePriority)
             .AsNoTracking()
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(request.Keyword))
+        {
+            var keyword = request.Keyword.ToLower();
+            query = query.Where(s => s.IssueType.TypeName.ToLower().Contains(keyword));
+        }
+
+        if (request.PriorityId.HasValue)
+        {
+            query = query.Where(s => s.PriorityId == request.PriorityId.Value);
+        }
+
+        var totalCount = await query.CountAsync(ct);
+
+        var list = await query
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
             .ToListAsync(ct);
 
-        return list.Select(Map).ToList();
+        return new UrbanInfraSystem.Application.DTOs.UserManagement.PagedResult<SlaPolicyResponse>
+        {
+            Items = list.Select(Map).ToList(),
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize
+        };
     }
 
     public async Task<SlaPolicyResponse?> GetByIdAsync(Guid id, CancellationToken ct = default)

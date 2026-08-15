@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrbanInfraSystem.Application.DTOs.Auth;
+using UrbanInfraSystem.Application.DTOs.UserManagement;
 using UrbanInfraSystem.Application.Interfaces;
 
 namespace UrbanInfraSystem.API.Controllers;
@@ -11,10 +12,12 @@ namespace UrbanInfraSystem.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IUserManagementService _userService;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, IUserManagementService userService)
     {
         _authService = authService;
+        _userService = userService;
     }
 
     /// <summary>Đăng ký tài khoản công dân (Citizen). Public, không yêu cầu đăng nhập.</summary>
@@ -59,17 +62,20 @@ public class AuthController : ControllerBase
         return revoked ? NoContent() : BadRequest(new { message = "Refresh token không hợp lệ." });
     }
 
-    /// <summary>Endpoint mẫu kiểm tra JWT hoạt động + đọc claims user hiện tại.</summary>
+    /// <summary>Lấy thông tin người dùng hiện tại từ JWT token.</summary>
     [HttpGet("me")]
     [Authorize]
-    public IActionResult Me()
+    [ProducesResponseType(typeof(AdminUserResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<AdminUserResponse>> Me(CancellationToken cancellationToken)
     {
-        return Ok(new
-        {
-            userId = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value,
-            email  = User.FindFirst(JwtRegisteredClaimNames.Email)?.Value,
-            roles  = User.FindAll("role").Select(c => c.Value)
-        });
+        var userId = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        if (userId is null) return Unauthorized();
+
+        var user = await _userService.GetUserByIdAsync(userId, cancellationToken);
+        return user is null
+            ? Unauthorized()
+            : Ok(user);
     }
 
     /// <summary>
