@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UrbanInfraSystem.Application.DTOs.Issues;
+using UrbanInfraSystem.Application.DTOs.Reports;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Enums;
 
@@ -32,8 +33,8 @@ public class ReportsController : ControllerBase
     [HttpPost]
     [Authorize(Roles = Roles.Citizen)]
     [Consumes("multipart/form-data")]
-    [ProducesResponseType(typeof(ApiResponse<IssueDetailResponse>), StatusCodes.Status201Created)]
-    public async Task<ActionResult<ApiResponse<IssueDetailResponse>>> Create(
+    [ProducesResponseType(typeof(ApiResponse<ReportDetailResponse>), StatusCodes.Status201Created)]
+    public async Task<ActionResult<ApiResponse<ReportDetailResponse>>> Create(
         [FromForm] CreateIssueFormRequest request,
         CancellationToken cancellationToken)
     {
@@ -65,7 +66,7 @@ public class ReportsController : ControllerBase
     /// <summary>Lấy các báo cáo của công dân đang đăng nhập.</summary>
     [HttpGet("mine")]
     [Authorize(Roles = Roles.Citizen)]
-    public async Task<ActionResult<ApiResponse<PagedResponse<IssueSummaryResponse>>>> Mine(
+    public async Task<ActionResult<ApiResponse<PagedResponse<ReportSummaryResponse>>>> Mine(
         [FromQuery] GetMyIssuesRequest request,
         CancellationToken cancellationToken)
     {
@@ -76,12 +77,23 @@ public class ReportsController : ControllerBase
     /// <summary>Lấy chi tiết Report theo ID; khách chỉ xem được dữ liệu công khai.</summary>
     [HttpGet("{reportId:long}")]
     [AllowAnonymous]
-    public async Task<ActionResult<ApiResponse<IssueDetailResponse>>> GetById(
+    public async Task<ActionResult<ApiResponse<ReportDetailResponse>>> GetById(
         long reportId,
         CancellationToken cancellationToken)
     {
         var result = await _reports.GetByIdAsync(reportId, _currentUser.UserId, cancellationToken);
         return result.Success ? Ok(result) : NotFound(result);
+    }
+
+    /// <summary>Các cập nhật mới nhất trên những Issue thuộc Report của công dân.</summary>
+    [HttpGet("mine/updates")]
+    [Authorize(Roles = Roles.Citizen)]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ReportUpdateResponse>>>> MyUpdates(
+        [FromQuery] int limit = 5,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_currentUser.UserId)) return Unauthorized();
+        return Ok(await _reports.GetMyRecentUpdatesAsync(_currentUser.UserId, limit, cancellationToken));
     }
 
     /// <summary>Lấy lịch sử trạng thái của tất cả Issue thuộc Report.</summary>
