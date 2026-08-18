@@ -5,14 +5,26 @@ namespace UrbanInfraSystem.Domain.Entities;
 /// </summary>
 public class IssueAttachment
 {
+    private IssueAttachment()
+    {
+    }
+
+    public IssueAttachment(long updateId)
+    {
+        if (updateId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(updateId), "Attachment phải thuộc một IssueUpdate hợp lệ.");
+
+        UpdateId = updateId;
+    }
+
     /// <summary>ID tự tăng của đính kèm.</summary>
     public long Id { get; set; }
 
     /// <summary>ID của sự cố cha.</summary>
     public long IssueId { get; set; }
 
-    /// <summary>ID của update mà đính kèm này gắn vào (nullable).</summary>
-    public long? UpdateId { get; set; }
+    /// <summary>ID của update mà đính kèm này gắn vào.</summary>
+    public long UpdateId { get; private set; }
 
     /// <summary>ID của user tải lên.</summary>
     public string UploadedBy { get; set; } = default!;

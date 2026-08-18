@@ -1,221 +1,158 @@
-using System;
-using System.Collections.Generic;
-using System.Security.Claims;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using UrbanInfraSystem.Application.DTOs.Issues;
 using UrbanInfraSystem.Application.DTOs.Staff;
 using UrbanInfraSystem.Application.Interfaces;
+using UrbanInfraSystem.Application.DTOs.Issues;
+using System.Collections.Generic;
+using UrbanInfraSystem.Domain.Enums;
 
 namespace UrbanInfraSystem.API.Controllers;
 
+/// <summary>
+/// API cho các nghiệp vụ của Cán bộ xử lý (Department Staff).
+/// </summary>
 [ApiController]
 [Route("api/staff")]
-[Authorize(Roles = "DEPARTMENT_STAFF,Staff,ADMIN")]
+[Tags("Staff")]
+[Authorize(Roles = Roles.DepartmentStaff)]
 public class StaffController : ControllerBase
 {
     private readonly IStaffService _staffService;
-    private readonly ICurrentUserService _currentUserService;
+    private readonly ICurrentUserService _currentUser;
 
-    public StaffController(IStaffService staffService, ICurrentUserService currentUserService)
+    public StaffController(IStaffService staffService, ICurrentUserService currentUser)
     {
         _staffService = staffService;
-        _currentUserService = currentUserService;
-    }
-
-    private string GetCurrentStaffId()
-    {
-        return _currentUserService.UserId 
-               ?? User.FindFirstValue(ClaimTypes.NameIdentifier) 
-               ?? User.FindFirstValue("sub") 
-               ?? string.Empty;
+        _currentUser = currentUser;
     }
 
     /// <summary>
-    /// Lấy các số liệu tổng quan cho dashboard của nhân viên.
+    /// Lấy dữ liệu tổng quan cho dashboard của cán bộ xử lý.
+    /// Dữ liệu bao gồm các số liệu về sự cố được phân công cho đơn vị của cán bộ.
     /// </summary>
     [HttpGet("dashboard/summary")]
     [ProducesResponseType(typeof(StaffDashboardSummaryResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetDashboardSummary(CancellationToken cancellationToken)
+    public async Task<ActionResult<StaffDashboardSummaryResponse>> GetDashboardSummary(CancellationToken cancellationToken)
     {
-        var staffId = GetCurrentStaffId();
-        var result = await _staffService.GetDashboardSummaryAsync(staffId, cancellationToken);
-        if (result is null)
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
         {
-            return NotFound(new { success = false, message = "Không tìm thấy thông tin phòng ban cho nhân viên." });
+            return Unauthorized();
         }
 
-        return Ok(result);
+        var summary = await _staffService.GetDashboardSummaryAsync(userId, cancellationToken);
+        return Ok(summary);
     }
 
     /// <summary>
-    /// Lấy danh sách các công việc đã chấp nhận của nhân viên hiện tại có phân trang.
+    /// Lấy danh sách các công việc (sự cố) đang mở được giao cho đơn vị của cán bộ.
     /// </summary>
     [HttpGet("tasks/my")]
-    [ProducesResponseType(typeof(PagedResponse<StaffTaskResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(List<StaffTaskResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetMyTasks([FromQuery] GetMyTasksRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<List<StaffTaskResponse>>> GetMyTasks(CancellationToken cancellationToken)
     {
-        var staffId = GetCurrentStaffId();
-        var result = await _staffService.GetMyTasksAsync(request, staffId, cancellationToken);
-        return Ok(result);
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
+        var tasks = await _staffService.GetMyTasksAsync(userId, cancellationToken);
+        return Ok(tasks);
     }
 
     /// <summary>
-    /// Lấy các hoạt động gần đây trong phòng ban của nhân viên.
+    /// Lấy các hoạt động gần đây trên các sự cố được giao cho đơn vị của cán bộ.
     /// </summary>
     [HttpGet("activities/recent")]
-    [ProducesResponseType(typeof(PagedResponse<StaffActivityResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(List<StaffActivityResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetMyRecentActivities([FromQuery] PagedRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<List<StaffActivityResponse>>> GetMyRecentActivities(CancellationToken cancellationToken)
     {
-        var staffId = GetCurrentStaffId();
-        var result = await _staffService.GetMyRecentActivitiesAsync(request, staffId, cancellationToken);
-        if (result is null)
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
         {
-            return NotFound(new { success = false, message = "Không tìm thấy thông tin phòng ban cho nhân viên." });
+            return Unauthorized();
         }
 
-        return Ok(result);
+        var activities = await _staffService.GetMyRecentActivitiesAsync(userId, cancellationToken);
+        return Ok(activities);
     }
 
     /// <summary>
-    /// Lấy danh sách các phân công đang chờ nhân viên hiện tại phản hồi.
-    /// </summary>
-    [HttpGet("assignments/pending")]
-    [ProducesResponseType(typeof(PagedResponse<StaffAssignmentResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetMyPendingAssignments([FromQuery] GetMyAssignmentsRequest request, CancellationToken cancellationToken)
-    {
-        var staffId = GetCurrentStaffId();
-        var result = await _staffService.GetMyPendingAssignmentsAsync(request, staffId, cancellationToken);
-        return Ok(result);
-    }
-
-    /// <summary>
-    /// Nhân viên chấp nhận hoặc từ chối một phân công.
-    /// </summary>
-    [HttpPost("assignments/{assignmentId:long}/respond")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> RespondToAssignment(
-        long assignmentId, 
-        [FromBody] RespondToAssignmentRequest request, 
-        CancellationToken cancellationToken)
-    {
-        var staffId = GetCurrentStaffId();
-        try
-        {
-            await _staffService.RespondToAssignmentAsync(assignmentId, request, staffId, cancellationToken);
-            return Ok(new { success = true, data = true, message = "Phản hồi phân công thành công." });
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { success = false, message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { success = false, message = ex.Message });
-        }
-    }
-
-    /// <summary>
-    /// Lấy danh sách các sự cố trong một khung nhìn bản đồ cho nhân viên.
-    /// </summary>
-    [HttpGet("issues/map")]
-    [ProducesResponseType(typeof(IReadOnlyList<StaffMapIssueResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetMapIssues([FromQuery] GetMapIssuesRequest request, CancellationToken cancellationToken)
-    {
-        var staffId = GetCurrentStaffId();
-        var result = await _staffService.GetMapIssuesAsync(request, staffId, cancellationToken);
-        if (result is null)
-        {
-            return NotFound(new { success = false, message = "Không tìm thấy thông tin phòng ban cho nhân viên." });
-        }
-
-        return Ok(result);
-    }
-
-    /// <summary>
-    /// Lấy danh sách các sự cố thuộc phòng ban của nhân viên hiện tại.
+    /// Lấy danh sách các sự cố có phân trang và bộ lọc, trong phạm vi của cán bộ.
     /// </summary>
     [HttpGet("incidents")]
     [ProducesResponseType(typeof(PagedResponse<StaffIncidentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetIncidents([FromQuery] SearchStaffIncidentsRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResponse<StaffIncidentResponse>>> GetStaffIncidents(
+        [FromQuery] StaffIncidentFilterRequest filters,
+        CancellationToken cancellationToken)
     {
-        var staffId = GetCurrentStaffId();
-        var result = await _staffService.GetIncidentsAsync(request, staffId, cancellationToken);
-        if (result is null)
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
         {
-            return NotFound(new { success = false, message = "Không tìm thấy thông tin phòng ban cho nhân viên." });
+            return Unauthorized();
         }
 
+        var result = await _staffService.GetIncidentsAsync(userId, filters, cancellationToken);
         return Ok(result);
     }
 
     /// <summary>
-    /// Lấy thông tin chi tiết của một sự cố thuộc phòng ban của nhân viên hiện tại.
+    /// Lấy danh sách sự cố để hiển thị trên bản đồ của cán bộ, có áp dụng bộ lọc.
     /// </summary>
-    [HttpGet("incidents/{issueId:long}")]
-    [ProducesResponseType(typeof(StaffIncidentDetailResponse), StatusCodes.Status200OK)]
+    [HttpGet("issues/map")]
+    [ProducesResponseType(typeof(List<StaffMapIssueResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetIncidentDetail(long issueId, CancellationToken cancellationToken)
+    public async Task<ActionResult<List<StaffMapIssueResponse>>> GetStaffMapIssues(
+        [FromQuery] StaffIncidentFilterRequest filters,
+        CancellationToken cancellationToken)
     {
-        var staffId = GetCurrentStaffId();
-        var result = await _staffService.GetIncidentDetailAsync(issueId, staffId, cancellationToken);
-        if (result is null)
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
         {
-            return NotFound(new { success = false, message = $"Không tìm thấy sự cố ID {issueId} hoặc bạn không có quyền xem." });
+            return Unauthorized();
         }
 
+        var result = await _staffService.GetMapIssuesAsync(userId, filters, cancellationToken);
         return Ok(result);
     }
 
     /// <summary>
-    /// Nhân viên tự nhận (claim) một sự cố chưa được gán.
+    /// Cán bộ tự nhận một sự cố chưa được phân công.
     /// </summary>
     [HttpPost("incidents/{issueId:long}/claim")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> ClaimIncident(long issueId, CancellationToken cancellationToken)
     {
-        var staffId = GetCurrentStaffId();
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
         try
         {
-            await _staffService.ClaimIncidentAsync(issueId, staffId, cancellationToken);
-            return Ok(new { success = true, message = "Nhận xử lý sự cố thành công." });
+            await _staffService.ClaimIncidentAsync(issueId, userId, cancellationToken);
+            return NoContent();
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new { success = false, message = ex.Message });
+            return NotFound(new { message = ex.Message });
         }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { success = false, message = ex.Message });
-        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
     }
 }

@@ -384,6 +384,21 @@ public class IssueService : IIssueService
         string reporterId,
         CancellationToken cancellationToken = default)
     {
+        var issueTypeIds = request.IssueTypeIds
+            .Concat(request.IssueTypeId.HasValue ? [request.IssueTypeId.Value] : [])
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (issueTypeIds.Count == 0 || issueTypeIds.Count > 5)
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = "Vui lòng chọn từ 1 đến 5 loại sự cố."
+            };
+        }
+
         var reporter = await _context.Users.FirstOrDefaultAsync(u => u.Id == reporterId, cancellationToken);
         if (reporter == null)
         {
@@ -394,14 +409,26 @@ public class IssueService : IIssueService
             };
         }
 
-        var issueType = await _context.IssueTypes
-            .FirstOrDefaultAsync(t => t.IssueTypeId == request.IssueTypeId && t.IsActive, cancellationToken);
-        if (issueType == null)
+        var issueTypes = await _context.IssueTypes
+            .Where(t => issueTypeIds.Contains(t.IssueTypeId) && t.IsActive)
+            .ToListAsync(cancellationToken);
+        if (issueTypes.Count != issueTypeIds.Count)
         {
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = $"Loại sự cố (ID: {request.IssueTypeId}) không tồn tại hoặc đã bị vô hiệu hóa."
+                Message = "Một hoặc nhiều loại sự cố không tồn tại hoặc đã bị vô hiệu hóa."
+            };
+        }
+
+        var containsOtherType = issueTypes.Any(t =>
+            string.Equals(t.TypeCode, "OTHER", StringComparison.OrdinalIgnoreCase));
+        if (containsOtherType && string.IsNullOrWhiteSpace(request.CustomTypeDescription))
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = "Vui lòng mô tả cụ thể khi chọn loại sự cố OTHER."
             };
         }
 
@@ -461,14 +488,13 @@ public class IssueService : IIssueService
             };
         }
 
-        string publicCode;
+        string reportPublicCode;
         do
         {
             var randomSuffix = Guid.NewGuid().ToString("N")[..6].ToUpper();
-            publicCode = $"ISS-{DateTime.UtcNow:yyyyMMdd}-{randomSuffix}";
+            reportPublicCode = $"REP-{DateTime.UtcNow:yyyyMMdd}-{randomSuffix}";
         }
-        while (await _context.Reports.AnyAsync(r => r.PublicCode == publicCode, cancellationToken) ||
-               await _context.Issues.AnyAsync(i => i.PublicCode == publicCode, cancellationToken));
+        while (await _context.Reports.AnyAsync(r => r.PublicCode == reportPublicCode, cancellationToken));
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var reportedAt = DateTime.UtcNow;
@@ -476,7 +502,7 @@ public class IssueService : IIssueService
         {
             ReporterId = reporterId,
             AreaId = area.AreaId,
-            PublicCode = publicCode,
+            PublicCode = reportPublicCode,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
             AddressText = request.AddressText?.Trim(),
@@ -490,46 +516,106 @@ public class IssueService : IIssueService
         _context.Reports.Add(report);
         await _context.SaveChangesAsync(cancellationToken);
 
-        var issue = new Issue
+        var issues = issueTypeIds.Select((typeId, index) => new Issue
         {
             ReportId = report.ReportId,
-            PublicCode = publicCode,
+            PublicCode = $"{reportPublicCode}-{index + 1:00}",
             ReporterId = reporterId,
-            IssueTypeId = issueType.IssueTypeId,
+            IssueTypeId = typeId,
             AreaId = area.AreaId,
             PriorityId = priority.PriorityId,
             StatusId = status.StatusId,
+            CustomTypeDescription = issueTypes.First(t => t.IssueTypeId == typeId).TypeCode
+                .Equals("OTHER", StringComparison.OrdinalIgnoreCase)
+                    ? request.CustomTypeDescription?.Trim()
+                    : null,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
             AddressText = request.AddressText?.Trim(),
             Latitude = request.Latitude,
             Longitude = request.Longitude,
-            UpvoteCount = 0,
             IsPublic = true,
             ReportedAt = reportedAt
-        };
+        }).ToList();
 
-        _context.Issues.Add(issue);
+        _context.Issues.AddRange(issues);
         await _context.SaveChangesAsync(cancellationToken);
 
-        var slaPolicy = await _context.SlaPolicies
-            .FirstOrDefaultAsync(s => s.IssueTypeId == issue.IssueTypeId && s.PriorityId == issue.PriorityId, cancellationToken);
+        var policies = await _context.SlaPolicies
+            .Where(s => issueTypeIds.Contains(s.IssueTypeId) && s.PriorityId == priority.PriorityId)
+            .ToListAsync(cancellationToken);
 
-        int firstResponseMinutes = slaPolicy?.FirstResponseMinutes ?? 120;
-        int resolutionMinutes = slaPolicy?.ResolutionMinutes ?? 1440;
-
-        var issueSla = new IssueSla
+        var initialUpdates = new Dictionary<long, IssueUpdate>();
+        foreach (var issue in issues)
         {
-            IssueId = issue.IssueId,
-            SlaPolicyId = slaPolicy?.Id,
-            FirstResponseMinutes = firstResponseMinutes,
-            ResolutionMinutes = resolutionMinutes,
-            FirstResponseDueAt = issue.ReportedAt.AddMinutes(firstResponseMinutes),
-            ResolutionDueAt = issue.ReportedAt.AddMinutes(resolutionMinutes),
-            CreatedAt = DateTime.UtcNow
-        };
+            var policy = policies.FirstOrDefault(p => p.IssueTypeId == issue.IssueTypeId);
+            var firstResponseMinutes = policy?.FirstResponseMinutes ?? 120;
+            var resolutionMinutes = policy?.ResolutionMinutes ?? 1440;
+            _context.IssueSlas.Add(new IssueSla
+            {
+                IssueId = issue.IssueId,
+                SlaPolicyId = policy?.Id,
+                FirstResponseMinutes = firstResponseMinutes,
+                ResolutionMinutes = resolutionMinutes,
+                FirstResponseDueAt = reportedAt.AddMinutes(firstResponseMinutes),
+                ResolutionDueAt = reportedAt.AddMinutes(resolutionMinutes),
+                CreatedAt = reportedAt
+            });
 
-        _context.IssueSlas.Add(issueSla);
+            var typeName = issueTypes.First(t => t.IssueTypeId == issue.IssueTypeId).TypeName;
+            var initialUpdate = new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                ToStatusId = status.StatusId,
+                Note = $"Report {report.PublicCode} đã tạo issue {issue.PublicCode} ({typeName}).",
+                CreatedBy = reporterId,
+                IsSystemGenerated = true,
+                CreatedAt = reportedAt
+            };
+            initialUpdates[issue.IssueId] = initialUpdate;
+            _context.IssueUpdates.Add(initialUpdate);
+
+            var routingRule = await _context.RoutingRules
+                .Include(r => r.Department)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.IssueTypeId == issue.IssueTypeId &&
+                                          r.AreaId == issue.AreaId && r.IsActive && r.Department.IsActive,
+                    cancellationToken);
+            if (routingRule is not null)
+            {
+                _context.IssueAssignments.Add(new IssueAssignment
+                {
+                    IssueId = issue.IssueId,
+                    DepartmentId = routingRule.DepartmentId,
+                    RoutingRuleId = routingRule.RoutingRuleId,
+                    AssignmentMethod = "AUTO",
+                    AssignmentNote = "Tự động định tuyến theo loại sự cố và khu vực.",
+                    AssignedAt = reportedAt,
+                    IsCurrent = true
+                });
+                _context.IssueUpdates.Add(new IssueUpdate
+                {
+                    IssueId = issue.IssueId,
+                    FromStatusId = status.StatusId,
+                    ToStatusId = status.StatusId,
+                    Note = $"Issue {issue.PublicCode} của report {report.PublicCode} đã định tuyến đến '{routingRule.Department.DepartmentName}'.",
+                    CreatedBy = reporterId,
+                    IsSystemGenerated = true,
+                    CreatedAt = reportedAt
+                });
+            }
+
+            _context.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = reporterId,
+                Action = "Create Issue",
+                EntityName = "Issues",
+                EntityId = issue.PublicCode,
+                OccurredAt = reportedAt
+            });
+        }
+
+        // Lấy ID của update khởi tạo trước khi lưu attachment.
         await _context.SaveChangesAsync(cancellationToken);
 
         if (request.Images != null && request.Images.Count > 0)
@@ -560,9 +646,10 @@ public class IssueService : IIssueService
                 }
 
                 var fileUrl = $"/uploads/issues/{uniqueFileName}";
-                var attachment = new IssueAttachment
+                var attachment = new IssueAttachment(initialUpdates[issues[0].IssueId].Id)
                 {
-                    IssueId = issue.IssueId,
+                    // Ảnh gốc thuộc Report; trong schema chuyển tiếp gắn vào Issue đầu tiên.
+                    IssueId = issues[0].IssueId,
                     UploadedBy = reporterId,
                     Kind = "image",
                     FileUrl = fileUrl,
@@ -578,69 +665,14 @@ public class IssueService : IIssueService
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        var initialUpdate = new IssueUpdate
-        {
-            IssueId = issue.IssueId,
-            FromStatusId = null,
-            ToStatusId = status.StatusId,
-            Note = "Báo cáo sự cố đã được tạo thành công.",
-            CreatedBy = reporterId,
-            IsSystemGenerated = true,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.IssueUpdates.Add(initialUpdate);
-
-        var routingRule = await _context.RoutingRules
-            .Include(r => r.Department)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.IssueTypeId == issue.IssueTypeId &&
-                                      r.AreaId == issue.AreaId &&
-                                      r.IsActive &&
-                                      r.Department.IsActive,
-                cancellationToken);
-
-        if (routingRule is not null)
-        {
-            _context.IssueAssignments.Add(new IssueAssignment
-            {
-                IssueId = issue.IssueId,
-                DepartmentId = routingRule.DepartmentId,
-                RoutingRuleId = routingRule.RoutingRuleId,
-                AssignmentMethod = "AUTO",
-                AssignmentNote = "Tự động định tuyến theo loại sự cố và khu vực.",
-                AssignedAt = DateTime.UtcNow,
-                IsCurrent = true
-            });
-            _context.IssueUpdates.Add(new IssueUpdate
-            {
-                IssueId = issue.IssueId,
-                FromStatusId = status.StatusId,
-                ToStatusId = status.StatusId,
-                Note = $"Đã định tuyến tự động đến đơn vị '{routingRule.Department.DepartmentName}'.",
-                CreatedBy = reporterId,
-                IsSystemGenerated = true,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        _context.AuditLogs.Add(new AuditLog
-        {
-            ActorUserId = reporterId,
-            Action = "Create Issue",
-            EntityName = "Issues",
-            EntityId = issue.PublicCode,
-            OccurredAt = DateTime.UtcNow
-        });
-
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        var detailResult = await GetIssueByIdAsync(issue.IssueId, reporterId, cancellationToken);
+        var detailResult = await GetIssueByIdAsync(issues[0].IssueId, reporterId, cancellationToken);
         return new ApiResponse<IssueDetailResponse>
         {
             Success = true,
-            Message = "Tạo báo cáo sự cố thành công.",
+            Message = $"Tạo report {report.PublicCode} với {issues.Count} issue thành công.",
             Data = detailResult.Data
         };
     }
@@ -676,8 +708,8 @@ public class IssueService : IIssueService
         bool hasUpvoted = false;
         if (!string.IsNullOrEmpty(currentUserId))
         {
-            hasUpvoted = await _context.IssueUpvotes
-                .AnyAsync(u => u.IssueId == issueId && u.UserId == currentUserId, cancellationToken);
+            hasUpvoted = await _context.ReportUpvotes
+                .AnyAsync(u => u.ReportId == issue.ReportId && u.UserId == currentUserId, cancellationToken);
         }
 
         var response = MapToDetailResponse(issue, reporter?.FullName ?? "Công dân", hasUpvoted);
@@ -778,18 +810,18 @@ public class IssueService : IIssueService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        HashSet<long> upvotedIssueIds = [];
+        HashSet<long> upvotedReportIds = [];
         if (!string.IsNullOrEmpty(currentUserId) && issues.Count > 0)
         {
-            var issueIds = issues.Select(i => i.IssueId).ToList();
-            var upvotes = await _context.IssueUpvotes
-                .Where(u => u.UserId == currentUserId && issueIds.Contains(u.IssueId))
-                .Select(u => u.IssueId)
+            var reportIds = issues.Select(i => i.ReportId).Distinct().ToList();
+            var upvotes = await _context.ReportUpvotes
+                .Where(u => u.UserId == currentUserId && reportIds.Contains(u.ReportId))
+                .Select(u => u.ReportId)
                 .ToListAsync(cancellationToken);
-            upvotedIssueIds = [.. upvotes];
+            upvotedReportIds = [.. upvotes];
         }
 
-        var items = issues.Select(i => MapToSummaryResponse(i, upvotedIssueIds.Contains(i.IssueId))).ToList();
+        var items = issues.Select(i => MapToSummaryResponse(i, upvotedReportIds.Contains(i.ReportId))).ToList();
 
         return new ApiResponse<PagedResponse<IssueSummaryResponse>>
         {
@@ -836,18 +868,18 @@ public class IssueService : IIssueService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        HashSet<long> upvotedIssueIds = [];
+        HashSet<long> upvotedReportIds = [];
         if (issues.Count > 0)
         {
-            var issueIds = issues.Select(i => i.IssueId).ToList();
-            var upvotes = await _context.IssueUpvotes
-                .Where(u => u.UserId == reporterId && issueIds.Contains(u.IssueId))
-                .Select(u => u.IssueId)
+            var reportIds = issues.Select(i => i.ReportId).Distinct().ToList();
+            var upvotes = await _context.ReportUpvotes
+                .Where(u => u.UserId == reporterId && reportIds.Contains(u.ReportId))
+                .Select(u => u.ReportId)
                 .ToListAsync(cancellationToken);
-            upvotedIssueIds = [.. upvotes];
+            upvotedReportIds = [.. upvotes];
         }
 
-        var items = issues.Select(i => MapToSummaryResponse(i, upvotedIssueIds.Contains(i.IssueId))).ToList();
+        var items = issues.Select(i => MapToSummaryResponse(i, upvotedReportIds.Contains(i.ReportId))).ToList();
 
         return new ApiResponse<PagedResponse<IssueSummaryResponse>>
         {
@@ -939,8 +971,8 @@ public class IssueService : IIssueService
                 bool hasUpvoted = false;
                 if (!string.IsNullOrEmpty(currentUserId))
                 {
-                    hasUpvoted = await _context.IssueUpvotes
-                        .AnyAsync(u => u.IssueId == issue.IssueId && u.UserId == currentUserId, cancellationToken);
+                    hasUpvoted = await _context.ReportUpvotes
+                        .AnyAsync(u => u.ReportId == issue.ReportId && u.UserId == currentUserId, cancellationToken);
                 }
 
                 var summary = MapToSummaryResponse(issue, hasUpvoted);

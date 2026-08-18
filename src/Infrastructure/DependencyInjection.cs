@@ -89,6 +89,9 @@ public static class DependencyInjection
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
         services.AddScoped<IIssueAssignmentService, IssueAssignmentService>();
+
+        services.AddScoped<IStaffService, StaffService>();
+
         services.AddScoped<IIssueAssignmentMemberService, IssueAssignmentMemberService>();
         services.AddScoped<INotificationService, NotificationService>();
 
@@ -96,13 +99,11 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentManagerDashboardService, DepartmentManagerDashboardService>();
         services.AddScoped<IDepartmentManagerIssueService, DepartmentManagerIssueService>();
         services.AddScoped<IDepartmentManagerSlaService, DepartmentManagerSlaService>();
-        services.AddScoped<IStaffService, StaffService>();
         services.AddScoped<IDepartmentManagerStaffService, DepartmentManagerStaffService>();
 
         // --- Background Hosted Services ---
         services.AddHostedService<UrbanInfraSystem.Infrastructure.BackgroundServices.SlaCheckBackgroundService>();
 
-        services.AddScoped<IIssueService, IssueService>();
         services.AddScoped<IEscalationRuleService, EscalationRuleService>();
         services.AddScoped<IEscalationEventService, EscalationEventService>();
         // Escalation processor and background worker

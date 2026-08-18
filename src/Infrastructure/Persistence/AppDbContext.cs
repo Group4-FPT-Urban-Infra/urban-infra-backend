@@ -324,6 +324,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.Property(a => a.Id).ValueGeneratedOnAdd();
 
             entity.Property(a => a.UploadedBy).IsRequired().HasMaxLength(450);
+            entity.Property(a => a.UpdateId).IsRequired();
             entity.Property(a => a.Kind).IsRequired().HasMaxLength(20);
             entity.Property(a => a.FileUrl).IsRequired().HasMaxLength(1000);
             entity.Property(a => a.ThumbnailUrl).HasMaxLength(1000);
@@ -336,6 +337,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasOne(a => a.Issue)
                   .WithMany(i => i.Attachments)
                   .HasForeignKey(a => a.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.Update)
+                  .WithMany(u => u.Attachments)
+                  .HasForeignKey(a => a.UpdateId)
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne<ApplicationUser>()

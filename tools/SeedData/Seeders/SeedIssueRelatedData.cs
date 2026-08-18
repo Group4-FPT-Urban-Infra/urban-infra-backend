@@ -188,6 +188,28 @@ public class SeedIssueRelatedData
         var attachments = new List<IssueAttachment>();
         var random = new Random(42);
 
+        var updateByIssueId = _db.IssueUpdates
+            .GroupBy(u => u.IssueId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(u => u.CreatedAt).First());
+
+        foreach (var issue in issues.Where(i => !updateByIssueId.ContainsKey(i.IssueId)))
+        {
+            var update = new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = issue.ReporterId,
+                FromStatusId = null,
+                ToStatusId = issue.StatusId,
+                Note = $"Khởi tạo dữ liệu cho issue {issue.PublicCode}.",
+                IsSystemGenerated = true,
+                CreatedAt = issue.ReportedAt
+            };
+            _db.IssueUpdates.Add(update);
+            updateByIssueId[issue.IssueId] = update;
+        }
+
+        await _db.SaveChangesAsync();
+
         foreach (var issue in issues)
         {
             // Assign 1-3 random attachments per issue
@@ -196,7 +218,7 @@ public class SeedIssueRelatedData
 
             foreach (var imgUrl in selectedImages)
             {
-                attachments.Add(new IssueAttachment
+                attachments.Add(new IssueAttachment(updateByIssueId[issue.IssueId].Id)
                 {
                     IssueId = issue.IssueId,
                     UploadedBy = issue.ReporterId,
