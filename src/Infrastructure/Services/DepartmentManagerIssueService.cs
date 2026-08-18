@@ -12,7 +12,7 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
 
     public DepartmentManagerIssueService(AppDbContext context) => _context = context;
 
-    public async Task<IReadOnlyList<DepartmentManagerIssueSummary>> GetIssuesAsync(int departmentId, DepartmentManagerIssueListRequest request, CancellationToken cancellationToken = default)
+    public async Task<PaginatedResponse<DepartmentManagerIssueSummary>> GetIssuesAsync(int departmentId, DepartmentManagerIssueListRequest request, CancellationToken cancellationToken = default)
     {
         var currentAssignmentIds = await _context.IssueAssignments
             .Where(a => a.DepartmentId == departmentId && a.IsCurrent)
@@ -25,10 +25,13 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
             .Include(i => i.Status)
             .Include(i => i.Sla)
             .Include(i => i.Attachments)
+            .Include(i => i.Assignments)
             .Where(i => _context.IssueAssignments
                 .Where(a => currentAssignmentIds.Contains(a.AssignmentId))
                 .Select(a => a.IssueId)
                 .Contains(i.IssueId));
+
+        List<long> activeAssignmentIds = currentAssignmentIds;
 
         if (request.Filter == "unassigned")
         {
@@ -38,7 +41,7 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
                 .Distinct()
                 .ToListAsync(cancellationToken);
 
-            var unassignedAssignmentIds = currentAssignmentIds.Except(assignedAssignmentIds).ToList();
+            activeAssignmentIds = currentAssignmentIds.Except(assignedAssignmentIds).ToList();
 
             query = _context.Issues
                 .Include(i => i.IssueType)
@@ -46,14 +49,15 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
                 .Include(i => i.Status)
                 .Include(i => i.Sla)
                 .Include(i => i.Attachments)
+                .Include(i => i.Assignments)
                 .Where(i => _context.IssueAssignments
-                    .Where(a => unassignedAssignmentIds.Contains(a.AssignmentId))
+                    .Where(a => activeAssignmentIds.Contains(a.AssignmentId))
                     .Select(a => a.IssueId)
                     .Contains(i.IssueId));
         }
         else if (request.Filter == "team_assigned")
         {
-            var teamAssignmentIds = await _context.IssueAssignmentMembers
+            activeAssignmentIds = await _context.IssueAssignmentMembers
                 .Where(m => currentAssignmentIds.Contains(m.AssignmentId) && m.Status != AssignmentMemberStatus.Rejected)
                 .Select(m => m.AssignmentId)
                 .Distinct()
@@ -65,8 +69,9 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
                 .Include(i => i.Status)
                 .Include(i => i.Sla)
                 .Include(i => i.Attachments)
+                .Include(i => i.Assignments)
                 .Where(i => _context.IssueAssignments
-                    .Where(a => teamAssignmentIds.Contains(a.AssignmentId))
+                    .Where(a => activeAssignmentIds.Contains(a.AssignmentId))
                     .Select(a => a.IssueId)
                     .Contains(i.IssueId));
         }
@@ -80,15 +85,50 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
         if (!string.IsNullOrWhiteSpace(request.Keyword) && request.Filter != "my_assigned")
             query = query.Where(i => i.Title.Contains(request.Keyword) || i.PublicCode.Contains(request.Keyword));
 
+        var totalCount = await query.CountAsync(cancellationToken);
+        var pageSize = request.PageSize > 0 ? request.PageSize : 20;
+        var pageNumber = request.PageNumber > 0 ? request.PageNumber : 1;
+
         var issues = await query
-            .OrderByDescending(i => i.PriorityId)
-            .ThenBy(i => i.ReportedAt)
-            .Skip((request.PageNumber - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .OrderBy(i => i.Sla == null ? 4 :
+                i.Sla.ResolvedAt.HasValue ? 5 :
+                i.Sla.ResolutionDueAt < DateTime.UtcNow ? 0 :
+                !i.Sla.FirstRespondedAt.HasValue && i.Sla.FirstResponseDueAt.HasValue && i.Sla.FirstResponseDueAt < DateTime.UtcNow ? 1 :
+                i.Sla.ResolutionDueAt < DateTime.UtcNow.AddHours(2) ? 2 : 3)
+            .ThenBy(i => i.PriorityId)
+            .ThenByDescending(i => i.ReportedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-        return issues.Select(MapToSummary).ToList();
+        var issueIds = issues.Select(i => i.IssueId).ToList();
+
+        var assignmentToMemberCount = new Dictionary<long, int>();
+        foreach (var assignmentId in activeAssignmentIds)
+        {
+            var count = await _context.IssueAssignmentMembers
+                .CountAsync(m => m.AssignmentId == assignmentId && m.Status != AssignmentMemberStatus.Rejected, cancellationToken);
+            assignmentToMemberCount[assignmentId] = count;
+        }
+
+        return new PaginatedResponse<DepartmentManagerIssueSummary>
+        {
+            Items = issues.Select(i => MapToSummary(i, GetIssueAssignedMemberCount(i, activeAssignmentIds, assignmentToMemberCount))).ToList(),
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
+    }
+
+    private static int GetIssueAssignedMemberCount(Issue issue, List<long> activeAssignmentIds, Dictionary<long, int> assignmentToMemberCount)
+    {
+        var assignmentId = issue.Assignments
+            .Where(a => activeAssignmentIds.Contains(a.AssignmentId))
+            .Select(a => a.AssignmentId)
+            .FirstOrDefault();
+
+        return assignmentId > 0 && assignmentToMemberCount.TryGetValue(assignmentId, out var count) ? count : 0;
     }
 
     public async Task<DepartmentManagerIssueDetailResponse?> GetIssueDetailAsync(long issueId, CancellationToken cancellationToken = default)
@@ -294,7 +334,7 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
         return (await GetIssueDetailAsync(issueId, cancellationToken))!;
     }
 
-    private static DepartmentManagerIssueSummary MapToSummary(Issue i) => new()
+    private static DepartmentManagerIssueSummary MapToSummary(Issue i, int assignedMemberCount) => new()
     {
         IssueId = i.IssueId,
         PublicCode = i.PublicCode,
@@ -320,7 +360,9 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
                 .Select(a => a.FileUrl)
                 .FirstOrDefault(),
         Latitude = i.Latitude,
-        Longitude = i.Longitude
+        Longitude = i.Longitude,
+        IssueStatus = GetIssueStatus(i),
+        AssignedMemberCount = assignedMemberCount
     };
 
     private static string GetPriorityColor(byte rank) => rank switch
@@ -340,5 +382,15 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
         if (!sla.FirstRespondedAt.HasValue && sla.FirstResponseDueAt.HasValue && sla.FirstResponseDueAt < now) return "RESPONSE_BREACHED";
         if (sla.ResolutionDueAt < now.AddHours(2)) return "AT_RISK";
         return "ON_TRACK";
+    }
+
+    private static string GetIssueStatus(Issue issue)
+    {
+        if (issue.Status?.StatusCode?.ToUpperInvariant() == "RESOLVED") return "RESOLVED";
+        if (issue.Status?.StatusCode?.ToUpperInvariant() == "CLOSED") return "CLOSED";
+        if (issue.Sla != null && issue.Sla.ResolutionDueAt < DateTime.UtcNow) return "BREACHED";
+        if (issue.Sla != null && !issue.Sla.FirstRespondedAt.HasValue && issue.Sla.FirstResponseDueAt.HasValue && issue.Sla.FirstResponseDueAt < DateTime.UtcNow) return "RESPONSE_BREACHED";
+        if (issue.Sla != null && issue.Sla.ResolutionDueAt < DateTime.UtcNow.AddHours(2)) return "AT_RISK";
+        return "ACTIVE";
     }
 }

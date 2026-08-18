@@ -556,17 +556,17 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
         {
             entity.ToTable("AuditLogs");
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Id).HasColumnName("audit_log_id");
-            entity.Property(x => x.ActorUserId).HasColumnName("actor_user_id").HasMaxLength(450);
-            entity.Property(x => x.Action).HasColumnName("action").IsRequired().HasMaxLength(50);
-            entity.Property(x => x.EntityName).HasColumnName("entity_name").IsRequired().HasMaxLength(100);
-            entity.Property(x => x.EntityId).HasColumnName("entity_id").HasMaxLength(100);
-            entity.Property(x => x.OldValues).HasColumnName("old_values").HasColumnType("nvarchar(max)");
-            entity.Property(x => x.NewValues).HasColumnName("new_values").HasColumnType("nvarchar(max)");
-            entity.Property(x => x.IpAddress).HasColumnName("ip_address").HasMaxLength(45);
-            entity.Property(x => x.UserAgent).HasColumnName("user_agent").HasMaxLength(500);
-            entity.Property(x => x.CorrelationId).HasColumnName("correlation_id");
-            entity.Property(x => x.OccurredAt).HasColumnName("occurred_at").HasColumnType("datetime2(0)");
+            entity.Property(x => x.Id).HasColumnName("AuditLogId").ValueGeneratedOnAdd();
+            entity.Property(x => x.ActorUserId).HasColumnName("ActorUserId").HasMaxLength(450);
+            entity.Property(x => x.Action).HasColumnName("Action").IsRequired().HasMaxLength(50);
+            entity.Property(x => x.EntityName).HasColumnName("EntityName").IsRequired().HasMaxLength(100);
+            entity.Property(x => x.EntityId).HasColumnName("EntityId").HasMaxLength(100);
+            entity.Property(x => x.OldValues).HasColumnName("OldValues").HasColumnType("nvarchar(max)");
+            entity.Property(x => x.NewValues).HasColumnName("NewValues").HasColumnType("nvarchar(max)");
+            entity.Property(x => x.IpAddress).HasColumnName("IpAddress").HasMaxLength(45);
+            entity.Property(x => x.UserAgent).HasColumnName("UserAgent").HasMaxLength(500);
+            entity.Property(x => x.CorrelationId).HasColumnName("CorrelationId");
+            entity.Property(x => x.OccurredAt).HasColumnName("OccurredAt").HasColumnType("datetime2(0)");
 
             // Map relationship to ApplicationUser without navigation property in AuditLog
             entity.HasOne<ApplicationUser>()
