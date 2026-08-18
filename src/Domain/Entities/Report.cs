@@ -12,7 +12,6 @@ public class Report
     public string? AddressText { get; set; }
     public decimal Latitude { get; set; }
     public decimal Longitude { get; set; }
-    public int UpvoteCount { get; set; }
     public bool IsPublic { get; set; } = true;
     public bool IsArchived { get; set; }
     public DateTime ReportedAt { get; set; } = DateTime.UtcNow;
@@ -21,5 +20,5 @@ public class Report
 
     public Area Area { get; set; } = default!;
     public ICollection<Issue> Issues { get; set; } = new List<Issue>();
-    public ICollection<ReportUpvote> Upvotes { get; set; } = new List<ReportUpvote>();
+    public ICollection<ReportIssueType> ReportIssueTypes { get; set; } = new List<ReportIssueType>();
 }

@@ -43,13 +43,12 @@ public class ReportService : IReportService
         var total = await query.LongCountAsync(ct);
         var reports = await query.OrderByDescending(r => r.ReportedAt)
             .Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToListAsync(ct);
-        var upvoted = await _db.ReportUpvotes.Where(x => x.UserId == reporterId).Select(x => x.ReportId).ToHashSetAsync(ct);
         return new ApiResponse<PagedResponse<ReportSummaryResponse>>
         {
             Success = true,
             Data = new PagedResponse<ReportSummaryResponse>
             {
-                Items = reports.Select(r => MapSummary(r, upvoted.Contains(r.ReportId))).ToList(),
+                Items = reports.Select(r => MapSummary(r)).ToList(),
                 Page = request.Page, PageSize = request.PageSize, TotalItems = total,
                 TotalPages = (int)Math.Ceiling((double)total / request.PageSize)
             }
@@ -62,8 +61,7 @@ public class ReportService : IReportService
         if (report is null || ((!report.IsPublic || report.IsArchived) && report.ReporterId != userId))
             return new ApiResponse<ReportDetailResponse> { Success = false, Message = $"Không tìm thấy Report ID = {reportId}." };
         var reporterName = await _db.Users.Where(u => u.Id == report.ReporterId).Select(u => u.FullName).FirstOrDefaultAsync(ct) ?? "Công dân";
-        var hasUpvoted = userId is not null && await _db.ReportUpvotes.AnyAsync(x => x.ReportId == reportId && x.UserId == userId, ct);
-        var summary = MapSummary(report, hasUpvoted);
+        var summary = MapSummary(report);
         return new ApiResponse<ReportDetailResponse>
         {
             Success = true,
@@ -71,7 +69,7 @@ public class ReportService : IReportService
             {
                 Id = summary.Id, PublicCode = summary.PublicCode, Title = summary.Title, Area = summary.Area,
                 Latitude = summary.Latitude, Longitude = summary.Longitude, ThumbnailUrl = summary.ThumbnailUrl,
-                UpvoteCount = summary.UpvoteCount, HasUpvoted = summary.HasUpvoted, ReportedAt = summary.ReportedAt,
+                ReportedAt = summary.ReportedAt,
                 IssueCount = summary.IssueCount, IssueTypes = summary.IssueTypes, ResolvedIssueCount = summary.ResolvedIssueCount,
                 Description = report.Description, AddressText = report.AddressText, ReporterDisplayName = reporterName,
                 Attachments = report.Issues.SelectMany(i => i.Attachments).Select(MapAttachment).ToList(),
@@ -122,6 +120,7 @@ public class ReportService : IReportService
 
     private IQueryable<Report> ReportQuery() => _db.Reports
         .Include(r => r.Area)
+        .Include(r => r.ReportIssueTypes)
         .Include(r => r.Issues).ThenInclude(i => i.IssueType)
         .Include(r => r.Issues).ThenInclude(i => i.Priority)
         .Include(r => r.Issues).ThenInclude(i => i.Status)
@@ -129,7 +128,7 @@ public class ReportService : IReportService
         .Include(r => r.Issues).ThenInclude(i => i.Assignments).ThenInclude(a => a.Department)
         .AsNoTracking();
 
-    private static ReportSummaryResponse MapSummary(Report report, bool hasUpvoted)
+    private static ReportSummaryResponse MapSummary(Report report)
     {
         var attachment = report.Issues.SelectMany(i => i.Attachments).FirstOrDefault();
         return new ReportSummaryResponse
@@ -137,9 +136,9 @@ public class ReportService : IReportService
             Id = report.ReportId, PublicCode = report.PublicCode, Title = report.Title,
             Area = Lookup(report.AreaId, report.Area.AreaName, report.Area.AreaCode), Latitude = report.Latitude,
             Longitude = report.Longitude, ThumbnailUrl = attachment?.ThumbnailUrl ?? attachment?.FileUrl,
-            UpvoteCount = report.UpvoteCount, HasUpvoted = hasUpvoted, ReportedAt = report.ReportedAt,
+            ReportedAt = report.ReportedAt,
             IssueCount = report.Issues.Count,
-            IssueTypes = report.Issues.Select(i => Lookup(i.IssueTypeId, i.IssueType.TypeName, i.IssueType.TypeCode)).ToList(),
+            IssueTypes = report.ReportIssueTypes.Select(x => Lookup(x.IssueTypeId, x.IssueTypeName, x.IssueTypeCode)).ToList(),
             ResolvedIssueCount = report.Issues.Count(i => i.Status.IsClosed)
         };
     }

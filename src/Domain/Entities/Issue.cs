@@ -53,9 +53,6 @@ public class Issue
     /// <summary>Điểm GEOMETRY lưu trữ vị trí (dùng cho spatial query).</summary>
     // public NetTopologySuite.Geometries.Point? LocationPoint { get; set; }
 
-    /// <summary>Tổng số upvote của sự cố.</summary>
-    public int UpvoteCount { get; set; } = 0;
-
     /// <summary>Đánh dấu sự cố có hiển thị công khai trên bản đồ không.</summary>
     public bool IsPublic { get; set; } = true;
 
@@ -74,6 +71,9 @@ public class Issue
     /// <summary>ID của sự cố gốc nếu báo cáo này bị đánh dấu trùng.</summary>
     public long? DuplicateOfIssueId { get; set; }
 
+    /// <summary>Số lượt upvote của sự cố này.</summary>
+    public int UpvoteCount { get; set; } = 0;
+
     // ==================== Navigation Properties ====================
 
     /// <summary>Phản ánh gốc.</summary>
@@ -91,9 +91,6 @@ public class Issue
     /// <summary>Trạng thái hiện tại.</summary>
     public IssueStatus Status { get; set; } = default!;
 
-    /// <summary>Danh sách upvote của sự cố.</summary>
-    public ICollection<IssueUpvote> Upvotes { get; set; } = new List<IssueUpvote>();
-
     /// <summary>Danh sách đính kèm (hình ảnh trước/sau xử lý).</summary>
     public ICollection<IssueAttachment> Attachments { get; set; } = new List<IssueAttachment>();
 
@@ -105,4 +102,7 @@ public class Issue
 
     /// <summary>Thông tin SLA của sự cố.</summary>
     public IssueSla? Sla { get; set; }
+
+    /// <summary>Danh sách upvote của sự cố.</summary>
+    public ICollection<IssueUpvote> Upvotes { get; set; } = new List<IssueUpvote>();
 }

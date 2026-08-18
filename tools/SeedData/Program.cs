@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
+using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
 using UrbanInfraSystem.SeedData.Seeders;
@@ -58,11 +59,71 @@ static RootCommand RootCommand()
         // 8. Issue-related data: SLA tracking, upvotes, attachments (depends on issues, SLA policies)
         await new SeedIssueRelatedData(db, logger).SeedAsync();
 
+        // 9. Seed ReportIssueTypes for existing reports
+        await SeedReportIssueTypesAsync(db, logger);
+
         logger.LogInformation("Seed completed successfully!");
     });
 
     root.AddCommand(seedCmd);
+
+    // Command to seed ReportIssueTypes for existing data
+    var seedReportIssueTypesCmd = new Command("seed-report-issue-types", "Seed ReportIssueTypes for existing reports");
+    seedReportIssueTypesCmd.SetHandler(async () =>
+    {
+        var services = BuildServices();
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await SeedReportIssueTypesAsync(db, logger);
+    });
+    root.AddCommand(seedReportIssueTypesCmd);
+
     return root;
+}
+
+static async Task SeedReportIssueTypesAsync(AppDbContext db, ILogger logger)
+{
+    logger.LogInformation("Seeding ReportIssueTypes for existing reports...");
+
+    var existingRelations = db.ReportIssueTypes.Select(x => new { x.ReportId, x.IssueTypeId }).ToList();
+    var existingRelationSet = existingRelations.Select(x => (x.ReportId, x.IssueTypeId)).ToHashSet();
+
+    var reports = db.Reports
+        .Include(r => r.Issues)
+        .ToList();
+
+    var newRelations = new List<ReportIssueType>();
+
+    foreach (var report in reports)
+    {
+        foreach (var issue in report.Issues)
+        {
+            var key = (report.ReportId, issue.IssueTypeId);
+            if (!existingRelationSet.Contains(key))
+            {
+                newRelations.Add(new ReportIssueType
+                {
+                    ReportId = report.ReportId,
+                    IssueTypeId = issue.IssueTypeId,
+                    IssueTypeName = issue.IssueType?.TypeName ?? "Unknown",
+                    IssueTypeCode = issue.IssueType?.TypeCode ?? "UNKNOWN",
+                    CreatedAt = report.CreatedAt
+                });
+            }
+        }
+    }
+
+    if (newRelations.Count > 0)
+    {
+        db.ReportIssueTypes.AddRange(newRelations);
+        await db.SaveChangesAsync();
+        logger.LogInformation("Added {Count} ReportIssueType relations.", newRelations.Count);
+    }
+    else
+    {
+        logger.LogInformation("ReportIssueTypes already exist for all reports.");
+    }
 }
 
 static IServiceProvider BuildServices()

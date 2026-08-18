@@ -33,90 +33,70 @@ public class SeedRoutingRules
             return;
         }
 
-        // Map issue types to departments
-        // QLDT: LIGHT, ROAD, POTHOLE
-        // CSGT: DRAIN, FLOOD
-        // MT: GARBAGE
-        // GT: SIGN
-        // VSDN: TREE
-        var routingMappings = new List<(string TypeCode, string DeptCode, string AreaCode)>
+        // Get root issue types only (ParentIssueTypeId == null)
+        var rootTypes = issueTypes.Where(t => t.ParentIssueTypeId == null).ToList();
+
+        // Get district-level areas (AreaType == "District")
+        var districts = areas.Where(a => a.AreaType == "District").ToList();
+
+        // Routing: IssueType (root) + District → Department
+        // QLDT  : LIGHT, POTHOLE, ROAD
+        // TN    : DRAIN, FLOOD
+        // MT    : GARBAGE
+        // GT    : SIGN
+        // VSDN  : TREE
+        // MC    : handles all types in Móng Cái district
+        var typeToDeptCode = new Dictionary<string, string>
         {
-            // QLDT - Quản lý đô thị handles light, road, pothole, sidewalk issues
-            ("LIGHT", "QLDT", "HL"),
-            ("LIGHT", "QLDT", "HG"),
-            ("LIGHT", "QLDT", "BC"),
-            ("ROAD", "QLDT", "HL"),
-            ("ROAD", "QLDT", "HG"),
-            ("ROAD", "QLDT", "BC"),
-            ("POTHOLE", "QLDT", "HL"),
-            ("POTHOLE", "QLDT", "HG"),
-            ("POTHOLE", "QLDT", "BC"),
-
-            // CSGT - Công ty Thoát nước handles drain and flood issues
-            ("DRAIN", "CSGT", "HL"),
-            ("DRAIN", "CSGT", "HG"),
-            ("DRAIN", "CSGT", "BC"),
-            ("FLOOD", "CSGT", "HL"),
-            ("FLOOD", "CSGT", "HG"),
-            ("FLOOD", "CSGT", "BC"),
-
-            // MT - Môi trường handles garbage
-            ("GARBAGE", "MT", "HL"),
-            ("GARBAGE", "MT", "HG"),
-            ("GARBAGE", "MT", "BC"),
-
-            // GT - Giao thông handles signs
-            ("SIGN", "GT", "HL"),
-            ("SIGN", "GT", "HG"),
-            ("SIGN", "GT", "BC"),
-
-            // VSDN - Vệ sinh đô thị handles tree maintenance
-            ("TREE", "VSDN", "HL"),
-            ("TREE", "VSDN", "HG"),
-            ("TREE", "VSDN", "BC"),
+            ["LIGHT"]   = "QLDT",
+            ["POTHOLE"] = "QLDT",
+            ["ROAD"]    = "QLDT",
+            ["DRAIN"]   = "TN",
+            ["FLOOD"]   = "TN",
+            ["GARBAGE"] = "MT",
+            ["SIGN"]    = "GT",
+            ["TREE"]    = "VSDN",
         };
 
         var rules = new List<RoutingRule>();
 
-        foreach (var (typeCode, deptCode, areaCode) in routingMappings)
+        foreach (var district in districts)
         {
-            var issueType = issueTypes.FirstOrDefault(t => t.TypeCode == typeCode);
-            var dept = departments.FirstOrDefault(d => d.DepartmentCode == deptCode);
-            var area = areas.FirstOrDefault(a => a.AreaCode == areaCode);
-
-            if (issueType == null || dept == null || area == null)
+            foreach (var rootType in rootTypes)
             {
-                _logger.LogWarning("Could not find mapping: Type={Type}, Dept={Dept}, Area={Area}",
-                    typeCode, deptCode, areaCode);
-                continue;
+                if (!typeToDeptCode.TryGetValue(rootType.TypeCode, out var deptCode))
+                    continue;
+
+                // Special case: Móng Cái district routes everything to MC department
+                if (district.AreaCode == "MC")
+                    deptCode = "MC";
+
+                var dept = departments.FirstOrDefault(d => d.DepartmentCode == deptCode);
+                if (dept == null) continue;
+
+                if (_db.RoutingRules.Any(r =>
+                    r.IssueTypeId == rootType.IssueTypeId &&
+                    r.AreaId == district.AreaId &&
+                    r.DepartmentId == dept.DepartmentId))
+                    continue;
+
+                rules.Add(new RoutingRule
+                {
+                    IssueTypeId = rootType.IssueTypeId,
+                    AreaId = district.AreaId,
+                    DepartmentId = dept.DepartmentId,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                });
             }
-
-            // Check if rule already exists for this combination
-            if (_db.RoutingRules.Any(r => r.IssueTypeId == issueType.IssueTypeId
-                && r.AreaId == area.AreaId && r.DepartmentId == dept.DepartmentId))
-            {
-                continue;
-            }
-
-            rules.Add(new RoutingRule
-            {
-                IssueTypeId = issueType.IssueTypeId,
-                AreaId = area.AreaId,
-                DepartmentId = dept.DepartmentId,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
         }
 
         if (rules.Count > 0)
         {
             _db.RoutingRules.AddRange(rules);
             await _db.SaveChangesAsync();
-            _logger.LogInformation("Seeded {Count} routing rules.", rules.Count);
-        }
-        else
-        {
-            _logger.LogInformation("No new routing rules to seed.");
+            _logger.LogInformation("Seeded {Count} routing rules ({Districts} districts × {Types} root types).",
+                rules.Count, districts.Count, rootTypes.Count);
         }
     }
 }

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Infrastructure.Persistence;
@@ -20,6 +21,7 @@ public class SeedIssueRelatedData
         await SeedIssueSlasAsync();
         await SeedIssueUpvotesAsync();
         await SeedIssueAttachmentsAsync();
+        await SeedEscalationEventsAsync();
     }
 
     private async Task SeedIssueSlasAsync()
@@ -30,7 +32,9 @@ public class SeedIssueRelatedData
             return;
         }
 
-        var issues = _db.Issues.ToList();
+        var issues = _db.Issues
+            .Include(i => i.Status)
+            .ToList();
         if (issues.Count == 0)
         {
             _logger.LogWarning("No issues found. Run SeedIssues first.");
@@ -48,7 +52,6 @@ public class SeedIssueRelatedData
 
         foreach (var issue in issues)
         {
-            // Find matching SLA policy
             var sla = slaPolicies.FirstOrDefault(p =>
                 p.IssueTypeId == issue.IssueTypeId && p.PriorityId == issue.PriorityId);
 
@@ -62,7 +65,6 @@ public class SeedIssueRelatedData
             var firstResponseDueAt = issue.ReportedAt.AddMinutes(sla.FirstResponseMinutes);
             var resolutionDueAt = issue.ReportedAt.AddMinutes(sla.ResolutionMinutes);
 
-            // Determine if breached based on current status
             var isFirstResponseBreached = issue.Status?.StatusCode != "NEW" &&
                 issue.Status?.StatusCode != "ASSIGNED" &&
                 DateTime.UtcNow > firstResponseDueAt;
@@ -104,7 +106,9 @@ public class SeedIssueRelatedData
 
         var issues = _db.Issues.ToList();
         var citizens = _db.Users
-            .Where(u => _db.UserRoles.Any(ur => _db.Roles.Any(r => r.Name == "Citizen" && r.Id == ur.RoleId) && ur.UserId == u.Id))
+            .Where(u => _db.UserRoles.Any(ur =>
+                _db.Roles.Any(r => r.Name == "Citizen" && r.Id == ur.RoleId) &&
+                ur.UserId == u.Id))
             .ToList();
 
         if (citizens.Count == 0)
@@ -120,12 +124,13 @@ public class SeedIssueRelatedData
         {
             if (issue.UpvoteCount <= 0) continue;
 
-            // Randomly select citizens to upvote this issue
-            var upvoters = citizens.OrderBy(_ => random.Next()).Take(Math.Min(issue.UpvoteCount, citizens.Count)).ToList();
+            var upvoters = citizens
+                .OrderBy(_ => random.Next())
+                .Take(Math.Min(issue.UpvoteCount, citizens.Count))
+                .ToList();
 
             foreach (var voter in upvoters)
             {
-                // Check if already upvoted
                 if (_db.ReportUpvotes.Any(u => u.ReportId == issue.ReportId && u.UserId == voter.Id))
                     continue;
 
@@ -161,38 +166,23 @@ public class SeedIssueRelatedData
             return;
         }
 
-        // Sample images from wwwroot/uploads/issues (relative paths for seed)
-        var sampleImages = new[]
+        var imageUrls = new List<string>
         {
-            "uploads/issues/93aeb30e9d2649e6907f34fcc2f0caa8.jpg",
-            "uploads/issues/dd97140e92d04fd493fd44a722b88eb4.jpg",
-            "uploads/issues/e041d5529a9140289a26d7d02b8b1428.jpg",
-            "uploads/issues/e7f0187c698c4cf49ba53c3b316bc956.jpg",
+            "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800",
+            "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=800",
+            "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+            "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800",
+            "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800",
+            "https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=800",
         };
 
-        // Check which images actually exist in wwwroot
-        var existingImages = sampleImages.Where(img =>
-            File.Exists(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "src", "API", "wwwroot", img.Replace("uploads/issues/", "")))).ToList();
-
-        // If no images found, use placeholder URLs
-        var imageUrls = existingImages.Count > 0
-            ? existingImages.ToList()
-            : new List<string>
-            {
-                "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800",
-                "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=800",
-                "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
-                "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800"
-            };
-
-        var attachments = new List<IssueAttachment>();
-        var random = new Random(42);
-
-        var updateByIssueId = _db.IssueUpdates
+        // Ensure every issue has at least one IssueUpdate to attach to
+        var updateMap = _db.IssueUpdates
             .GroupBy(u => u.IssueId)
-            .ToDictionary(g => g.Key, g => g.OrderBy(u => u.CreatedAt).First());
+            .ToDictionary(g => g.Key, g => g.OrderBy(u => u.CreatedAt).First().Id);
 
-        foreach (var issue in issues.Where(i => !updateByIssueId.ContainsKey(i.IssueId)))
+        var issuesNeedingUpdate = issues.Where(i => !updateMap.ContainsKey(i.IssueId)).ToList();
+        foreach (var issue in issuesNeedingUpdate)
         {
             var update = new IssueUpdate
             {
@@ -200,34 +190,35 @@ public class SeedIssueRelatedData
                 CreatedBy = issue.ReporterId,
                 FromStatusId = null,
                 ToStatusId = issue.StatusId,
-                Note = $"Khởi tạo dữ liệu cho issue {issue.PublicCode}.",
+                Note = $"Khởi tạo dữ liệu cho sự cố {issue.PublicCode}.",
                 IsSystemGenerated = true,
                 CreatedAt = issue.ReportedAt
             };
             _db.IssueUpdates.Add(update);
-            updateByIssueId[issue.IssueId] = update;
+            await _db.SaveChangesAsync();
+            updateMap[issue.IssueId] = update.Id;
         }
 
-        await _db.SaveChangesAsync();
+        var attachments = new List<IssueAttachment>();
+        var random = new Random(42);
 
         foreach (var issue in issues)
         {
-            // Assign 1-3 random attachments per issue
-            var numAttachments = random.Next(1, 4);
-            var selectedImages = imageUrls.OrderBy(_ => random.Next()).Take(numAttachments);
+            if (!updateMap.TryGetValue(issue.IssueId, out var updateId)) continue;
 
-            foreach (var imgUrl in selectedImages)
+            var numAttachments = random.Next(1, 4);
+            var selected = imageUrls.OrderBy(_ => random.Next()).Take(numAttachments);
+
+            foreach (var imgUrl in selected)
             {
-                attachments.Add(new IssueAttachment(updateByIssueId[issue.IssueId].Id)
+                attachments.Add(new IssueAttachment(updateId)
                 {
                     IssueId = issue.IssueId,
                     UploadedBy = issue.ReporterId,
                     Kind = "IMAGE",
                     FileUrl = imgUrl,
-                    MimeType = imgUrl.EndsWith(".jpg") || imgUrl.EndsWith(".jpeg")
-                        ? "image/jpeg"
-                        : "image/png",
-                    FileSizeBytes = random.Next(50000, 500000),
+                    MimeType = "image/jpeg",
+                    FileSizeBytes = random.Next(50_000, 500_000),
                     WidthPx = 800,
                     HeightPx = 600,
                     CreatedAt = issue.ReportedAt.AddMinutes(random.Next(5, 60))
@@ -241,9 +232,110 @@ public class SeedIssueRelatedData
             await _db.SaveChangesAsync();
             _logger.LogInformation("Seeded {Count} issue attachments.", attachments.Count);
         }
-        else
+    }
+
+    private async Task SeedEscalationEventsAsync()
+    {
+        if (_db.EscalationEvents.Any())
         {
-            _logger.LogInformation("No attachments to seed.");
+            _logger.LogInformation("EscalationEvents already exist, skipping.");
+            return;
+        }
+
+        var issues = _db.Issues
+            .Include(i => i.Status)
+            .Include(i => i.Sla)
+            .Where(i => i.Sla != null)
+            .ToList();
+
+        if (issues.Count == 0)
+        {
+            _logger.LogInformation("No issues with SLA found. Skipping escalation events.");
+            return;
+        }
+
+        var escalationRules = _db.EscalationRules.ToList();
+        if (escalationRules.Count == 0)
+        {
+            _logger.LogWarning("No escalation rules found. Run SeedEscalationRules first.");
+            return;
+        }
+
+        var events = new List<EscalationEvent>();
+        var random = new Random(42);
+
+        foreach (var issue in issues)
+        {
+            if (issue.Sla == null) continue;
+
+            var slaPolicies = _db.SlaPolicies.ToList();
+            var sla = slaPolicies.FirstOrDefault(p => p.Id == issue.Sla.SlaPolicyId);
+            if (sla == null) continue;
+
+            var relevantRules = escalationRules
+                .Where(r => r.SlaPolicyId == sla.Id && r.IsActive)
+                .OrderBy(r => r.OverdueMinutes)
+                .ToList();
+
+            foreach (var rule in relevantRules)
+            {
+                var triggerAt = issue.ReportedAt.AddMinutes(rule.OverdueMinutes);
+
+                // Only create event if trigger time has passed (realistic: past issues may have triggered)
+                if (triggerAt > DateTime.UtcNow) continue;
+
+                var issueSla = issue.Sla;
+                var isBreached = rule.EscalationLevel switch
+                {
+                    1 => DateTime.UtcNow > issueSla.FirstResponseDueAt,
+                    2 or 3 or 4 => DateTime.UtcNow > issueSla.ResolutionDueAt,
+                    _ => true
+                };
+
+                if (!isBreached) continue;
+
+                // Status check: only for open issues
+                var openStatuses = new[] { "NEW", "ASSIGNED", "IN_PROGRESS", "PENDING_INFO", "REQUEST_REOPEN" };
+                if (!openStatuses.Contains(issue.Status?.StatusCode ?? ""))
+                    continue;
+
+                var eventStatus = triggerAt < DateTime.UtcNow.AddDays(-1)
+                    ? "Acknowledged"
+                    : "Pending";
+
+                var dept = rule.TargetDepartmentId != null
+                    ? _db.Departments.FirstOrDefault(d => d.DepartmentId == rule.TargetDepartmentId)
+                    : null;
+
+                var managers = _db.DepartmentMembers
+                    .Where(dm => dm.IsManager && dm.IsActive &&
+                        (dept == null || dm.DepartmentId == dept.DepartmentId))
+                    .ToList();
+                var targetUserId = managers.Count > 0
+                    ? managers[random.Next(managers.Count)].UserId
+                    : null;
+
+                events.Add(new EscalationEvent
+                {
+                    IssueId = issue.IssueId,
+                    EscalationRuleId = rule.Id,
+                    TargetDepartmentId = rule.TargetDepartmentId,
+                    TargetUserId = targetUserId,
+                    TriggeredAt = triggerAt,
+                    AcknowledgedAt = eventStatus == "Acknowledged"
+                        ? triggerAt.AddHours(random.Next(1, 8))
+                        : null,
+                    EventStatus = eventStatus,
+                    Note = $"Leo thang mức {rule.EscalationLevel}: {rule.NotificationTitle}"
+                });
+            }
+        }
+
+        if (events.Count > 0)
+        {
+            _db.EscalationEvents.AddRange(events);
+            await _db.SaveChangesAsync();
+            _logger.LogInformation("Seeded {Count} escalation events.", events.Count);
         }
     }
 }

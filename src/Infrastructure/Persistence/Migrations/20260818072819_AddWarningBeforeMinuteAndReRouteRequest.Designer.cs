@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using UrbanInfraSystem.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using UrbanInfraSystem.Infrastructure.Persistence;
 namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818072819_AddWarningBeforeMinuteAndReRouteRequest")]
+    partial class AddWarningBeforeMinuteAndReRouteRequest
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -998,20 +1001,15 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("UserId")
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2(0)");
 
-                    b.Property<long?>("IssueId1")
-                        .HasColumnType("bigint");
-
                     b.HasKey("IssueId", "UserId");
 
-                    b.HasIndex("IssueId1");
-
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_IssueUpvotes_UserId");
 
                     b.ToTable("IssueUpvotes", (string)null);
                 });
@@ -1213,6 +1211,9 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2(0)");
 
+                    b.Property<int>("UpvoteCount")
+                        .HasColumnType("int");
+
                     b.HasKey("ReportId");
 
                     b.HasIndex("AreaId");
@@ -1225,37 +1226,6 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.HasIndex("ReporterId");
 
                     b.ToTable("Reports", (string)null);
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.ReportIssueType", b =>
-                {
-                    b.Property<long>("ReportId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("IssueTypeId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(0)");
-
-                    b.Property<string>("IssueTypeCode")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("IssueTypeName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .IsUnicode(true)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.HasKey("ReportId", "IssueTypeId");
-
-                    b.HasIndex("IssueTypeId");
-
-                    b.HasIndex("ReportId");
-
-                    b.ToTable("ReportIssueTypes", (string)null);
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.ReportUpvote", b =>
@@ -1776,14 +1746,10 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueUpvote", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", "Issue")
-                        .WithMany()
+                        .WithMany("Upvotes")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.Issue", null)
-                        .WithMany("Upvotes")
-                        .HasForeignKey("IssueId1");
 
                     b.Navigation("Issue");
                 });
@@ -1832,34 +1798,27 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Area");
-                });
-
-            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.ReportIssueType", b =>
-                {
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.IssueType", "IssueType")
+                    b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
-                        .HasForeignKey("IssueTypeId")
+                        .HasForeignKey("ReporterId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("UrbanInfraSystem.Domain.Entities.Report", "Report")
-                        .WithMany("ReportIssueTypes")
-                        .HasForeignKey("ReportId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("IssueType");
-
-                    b.Navigation("Report");
+                    b.Navigation("Area");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.ReportUpvote", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.Report", "Report")
-                        .WithMany()
+                        .WithMany("Upvotes")
                         .HasForeignKey("ReportId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Report");
@@ -1962,7 +1921,7 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Issues");
 
-                    b.Navigation("ReportIssueTypes");
+                    b.Navigation("Upvotes");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", b =>

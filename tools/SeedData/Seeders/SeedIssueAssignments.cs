@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Infrastructure.Persistence;
@@ -23,7 +24,11 @@ public class SeedIssueAssignments
             return;
         }
 
-        var issues = _db.Issues.ToList();
+        var issues = _db.Issues
+            .Include(i => i.Status)
+            .Include(i => i.IssueType)
+            .ToList();
+
         if (issues.Count == 0)
         {
             _logger.LogWarning("No issues found. Run SeedIssues first.");
@@ -37,162 +42,117 @@ public class SeedIssueAssignments
             return;
         }
 
-        var assignments = new List<IssueAssignment>();
-        var random = new Random(42);
-
-        // Map issue types to departments
-        var typeToDeptMap = new Dictionary<string, string>
-        {
-            { "LIGHT", "QLDT" },
-            { "POTHOLE", "CSGT" },
-            { "ROAD", "CSGT" },
-            { "SIGN", "GT" },
-            { "FLOOD", "CSGT" },
-            { "DRAIN", "CSGT" },
-            { "TREE", "QLDT" },
-            { "GARBAGE", "VSDN" }
-        };
-
-        // Also create staff members for assignment
+        // Staff members (non-managers) per department
         var staffMembers = _db.DepartmentMembers
             .Where(dm => !dm.IsManager && dm.IsActive)
             .ToList();
 
-        var assignmentCount = 0;
+        var random = new Random(42);
+        var created = 0;
 
         foreach (var issue in issues)
         {
-            var issueType = _db.IssueTypes.FirstOrDefault(t => t.IssueTypeId == issue.IssueTypeId);
-            if (issueType == null) continue;
+            // Find routing rule for this issue's type (root type) and its area's parent district
+            var districtArea = _db.Areas
+                .FirstOrDefault(a => a.AreaId == issue.AreaId);
 
-            // Find matching department
-            var deptCode = typeToDeptMap.GetValueOrDefault(issueType.TypeCode, departments[random.Next(departments.Count)].DepartmentCode);
-            var dept = departments.FirstOrDefault(d => d.DepartmentCode == deptCode);
+            // If issue is at ward level, get district; if at district level, use itself
+            int lookupAreaId;
+            if (districtArea?.ParentAreaId != null)
+                lookupAreaId = districtArea.ParentAreaId.Value;
+            else
+                lookupAreaId = issue.AreaId;
+
+            // Get root issue type for routing
+            var rootType = _db.IssueTypes
+                .FirstOrDefault(t => t.IssueTypeId == issue.IssueTypeId);
+            while (rootType?.ParentIssueTypeId != null)
+                rootType = _db.IssueTypes.First(t => t.IssueTypeId == rootType.ParentIssueTypeId);
+
+            RoutingRule? rule = null;
+            if (rootType != null)
+            {
+                rule = _db.RoutingRules
+                    .FirstOrDefault(r => r.IssueTypeId == rootType.IssueTypeId && r.AreaId == lookupAreaId);
+            }
+
+            // Fallback: match by district area code
+            if (rule == null)
+            {
+                var districtCode = _db.Areas.FirstOrDefault(a => a.AreaId == lookupAreaId)?.AreaCode;
+                if (districtCode == "MC")
+                    rule = _db.RoutingRules.FirstOrDefault(r =>
+                        r.AreaId == lookupAreaId &&
+                        _db.IssueTypes.Any(t => t.IssueTypeId == r.IssueTypeId));
+            }
+
+            // Find department from rule or default to QLDT
+            var dept = rule != null
+                ? departments.FirstOrDefault(d => d.DepartmentId == rule.DepartmentId)
+                : departments.FirstOrDefault(d => d.DepartmentCode == "QLDT");
             if (dept == null) dept = departments.First();
 
             // Find manager for this department
             var manager = _db.DepartmentMembers
                 .FirstOrDefault(dm => dm.DepartmentId == dept.DepartmentId && dm.IsManager && dm.IsActive);
 
-            if (manager == null)
-            {
-                _logger.LogWarning("No manager found for department {Dept}, skipping issue {Issue}",
-                    dept.DepartmentCode, issue.PublicCode);
-                continue;
-            }
+            var assignedAt = issue.ReportedAt.AddMinutes(random.Next(5, 120));
 
             var assignment = new IssueAssignment
             {
                 IssueId = issue.IssueId,
                 DepartmentId = dept.DepartmentId,
-                AssignedAt = issue.ReportedAt.AddMinutes(random.Next(5, 60)),
+                RoutingRuleId = rule?.RoutingRuleId,
+                AssignedAt = assignedAt,
                 AssignmentMethod = "AUTO",
+                AssignmentNote = $"Phân công tự động theo quy tắc định tuyến: {rootType?.TypeName ?? "N/A"} → {dept.DepartmentName}",
                 IsCurrent = true
             };
 
-            assignments.Add(assignment);
-            assignmentCount++;
-        }
+            if (issue.Status?.StatusCode != "NEW")
+            {
+                assignment.AcceptedAt = assignedAt.AddMinutes(random.Next(15, 180));
+            }
+            if (issue.Status?.StatusCode == "RESOLVED" ||
+                issue.Status?.StatusCode == "CLOSED" ||
+                issue.Status?.StatusCode == "REQUEST_REOPEN")
+            {
+                assignment.EndedAt = issue.ResolvedAt ?? assignedAt.AddDays(random.Next(1, 7));
+            }
 
-        if (assignments.Count > 0)
-        {
-            _db.IssueAssignments.AddRange(assignments);
+            _db.IssueAssignments.Add(assignment);
             await _db.SaveChangesAsync();
-            _logger.LogInformation("Seeded {Count} issue assignments.", assignments.Count);
+            created++;
 
-            // Now seed IssueAssignmentMembers for some assignments
-            // We'll mark ~40% as assigned to staff, leaving ~60% unassigned
-            await SeedIssueAssignmentMembersAsync(assignments, staffMembers, random);
-        }
-        else
-        {
-            _logger.LogInformation("No assignments to seed.");
-        }
-    }
-
-    private async Task SeedIssueAssignmentMembersAsync(
-        List<IssueAssignment> assignments,
-        List<DepartmentMember> staffMembers,
-        Random random)
-    {
-        if (_db.IssueAssignmentMembers.Any())
-        {
-            _logger.LogInformation("IssueAssignmentMembers already exist, skipping.");
-            return;
-        }
-
-        if (staffMembers.Count == 0)
-        {
-            _logger.LogWarning("No staff members found. Skipping assignment members seeding.");
-            return;
-        }
-
-        var assignmentMembers = new List<IssueAssignmentMember>();
-        var assignedCount = 0;
-
-        // Assign ~40% of assignments to staff members
-        foreach (var assignment in assignments)
-        {
-            // Only assign if random condition is met (about 40%)
-            if (random.Next(100) >= 40) continue;
-
-            // Get staff members from the same department
-            var deptStaff = staffMembers
-                .Where(s => s.DepartmentId == assignment.DepartmentId)
-                .ToList();
-
-            if (deptStaff.Count == 0) continue;
-
-            // Pick 1 staff member for this assignment
-            var staff = deptStaff[random.Next(deptStaff.Count)];
-
-            // Find the manager who assigned this
-            var manager = _db.DepartmentMembers
-                .FirstOrDefault(dm => dm.DepartmentId == assignment.DepartmentId && dm.IsManager);
-
-            // Determine status based on issue status
-            var issue = _db.Issues.FirstOrDefault(i => i.IssueId == assignment.IssueId);
-
-            string status;
-            DateTime? acceptedAt = null;
-            DateTime? endedAt = null;
-
-            if (issue?.Status?.StatusCode == "RESOLVED" || issue?.Status?.StatusCode == "CLOSED")
+            // IssueAssignmentMembers for non-NEW issues
+            if (issue.Status?.StatusCode != "NEW")
             {
-                status = AssignmentMemberStatus.Completed;
-                acceptedAt = assignment.AssignedAt.AddMinutes(random.Next(10, 120));
-                endedAt = acceptedAt.Value.AddHours(random.Next(1, 24));
+                var deptStaff = staffMembers.Where(s => s.DepartmentId == dept.DepartmentId).ToList();
+                if (deptStaff.Count > 0)
+                {
+                    var staff = deptStaff[random.Next(deptStaff.Count)];
+                    var status = issue.Status?.StatusCode switch
+                    {
+                        "RESOLVED" or "CLOSED" => AssignmentMemberStatus.Completed,
+                        "IN_PROGRESS" or "REQUEST_REOPEN" => AssignmentMemberStatus.Accepted,
+                        _ => AssignmentMemberStatus.Accepted
+                    };
+
+                    _db.IssueAssignmentMembers.Add(new IssueAssignmentMember
+                    {
+                        AssignmentId = assignment.AssignmentId,
+                        UserId = staff.UserId,
+                        AssignedBy = manager?.UserId ?? staff.UserId,
+                        AssignedAt = assignment.AcceptedAt ?? assignedAt,
+                        AcceptedAt = assignment.AcceptedAt,
+                        EndedAt = assignment.EndedAt,
+                        Status = status
+                    });
+                    await _db.SaveChangesAsync();
+                }
             }
-            else if (issue?.Status?.StatusCode == "IN_PROGRESS")
-            {
-                status = AssignmentMemberStatus.Accepted;
-                acceptedAt = assignment.AssignedAt.AddMinutes(random.Next(10, 60));
-            }
-            else
-            {
-                status = AssignmentMemberStatus.Pending;
-            }
-
-            assignmentMembers.Add(new IssueAssignmentMember
-            {
-                AssignmentId = assignment.AssignmentId,
-                UserId = staff.UserId,
-                AssignedBy = manager?.UserId ?? staff.UserId,
-                AssignedAt = assignment.AssignedAt,
-                AcceptedAt = acceptedAt,
-                EndedAt = endedAt,
-                Status = status
-            });
-
-            assignedCount++;
         }
 
-        if (assignmentMembers.Count > 0)
-        {
-            _db.IssueAssignmentMembers.AddRange(assignmentMembers);
-            await _db.SaveChangesAsync();
-            _logger.LogInformation("Seeded {Count} issue assignment members ({Assigned} assigned, {Unassigned} unassigned).",
-                assignmentMembers.Count, assignedCount, assignments.Count - assignedCount);
-        }
+        _logger.LogInformation("Seeded {Count} issue assignments.", created);
     }
 }

@@ -1,33 +1,24 @@
-using UrbanInfraSystem.Application.DTOs.Issues;
-
 namespace UrbanInfraSystem.Application.Interfaces;
 
 /// <summary>
-/// Service interface cho nghiệp vụ upvote sự cố.
+/// Service xử lý upvote/unvote cho Issue.
 /// </summary>
 public interface IIssueUpvoteService
 {
     /// <summary>
-    /// Upvote một sự cố. Gọi lặp lại không tạo upvote thứ hai (idempotent).
+    /// Toggle upvote cho một Issue. Nếu chưa upvote thì thêm, nếu đã upvote thì xóa.
     /// </summary>
-    /// <param name="issueId">ID của sự cố cần upvote.</param>
-    /// <param name="userId">ID của user thực hiện upvote.</param>
-    /// <returns>Trạng thái upvote hiện tại của sự cố.</returns>
-    Task<ApiResponse<UpvoteResponse>> UpvoteAsync(long issueId, string userId);
+    /// <param name="issueId">Mã Issue</param>
+    /// <param name="userId">Mã user thực hiện</param>
+    /// <param name="cancellationToken">Token hủy</param>
+    /// <returns>True nếu sau thao tác issue đang được upvote, False nếu đã bỏ upvote</returns>
+    Task<bool> ToggleAsync(long issueId, string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Bỏ upvote một sự cố. Gọi lặp lại vẫn trả trạng thái hiện tại (idempotent).
+    /// Xóa upvote khỏi một Issue.
     /// </summary>
-    /// <param name="issueId">ID của sự cố cần bỏ upvote.</param>
-    /// <param name="userId">ID của user thực hiện bỏ upvote.</param>
-    /// <returns>Trạng thái upvote hiện tại của sự cố.</returns>
-    Task<ApiResponse<UpvoteResponse>> RemoveUpvoteAsync(long issueId, string userId);
-
-    /// <summary>
-    /// Lấy trạng thái upvote của một sự cố cho user hiện tại.
-    /// </summary>
-    /// <param name="issueId">ID của sự cố.</param>
-    /// <param name="userId">ID của user cần kiểm tra.</param>
-    /// <returns>Trạng thái upvote của sự cố.</returns>
-    Task<ApiResponse<UpvoteResponse>> GetUpvoteStatusAsync(long issueId, string? userId);
+    /// <param name="issueId">Mã Issue</param>
+    /// <param name="userId">Mã user thực hiện</param>
+    /// <param name="cancellationToken">Token hủy</param>
+    Task RemoveAsync(long issueId, string userId, CancellationToken cancellationToken = default);
 }

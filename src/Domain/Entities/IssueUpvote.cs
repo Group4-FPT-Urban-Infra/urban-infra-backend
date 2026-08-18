@@ -1,15 +1,14 @@
 namespace UrbanInfraSystem.Domain.Entities;
 
 /// <summary>
-/// Entity cho bảng upvote sự cố. Mỗi bản ghi đại diện cho một công dân upvote một sự cố.
-/// Ràng buộc: 1 user chỉ upvote 1 lần cho 1 issue (composite PK).
+/// Bảng upvote cho Issue. Mỗi user có thể upvote 1 issue 1 lần.
 /// </summary>
 public class IssueUpvote
 {
-    /// <summary>ID của sự cố được upvote.</summary>
+    /// <summary>Mã issue được upvote.</summary>
     public long IssueId { get; set; }
 
-    /// <summary>ID của user thực hiện upvote.</summary>
+    /// <summary>Mã user thực hiện upvote.</summary>
     public string UserId { get; set; } = default!;
 
     /// <summary>Thời điểm upvote.</summary>
@@ -17,6 +16,6 @@ public class IssueUpvote
 
     // ==================== Navigation Properties ====================
 
-    /// <summary>Sự cố được upvote.</summary>
+    /// <summary>Issue được upvote.</summary>
     public Issue Issue { get; set; } = default!;
 }

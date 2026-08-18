@@ -24,62 +24,109 @@ public class SeedEscalationRules
         }
 
         var slaPolicies = _db.SlaPolicies.ToList();
-        var departments = _db.Departments.ToList();
-
         if (slaPolicies.Count == 0)
         {
             _logger.LogWarning("No SLA policies found. Run SeedSlaPolicies first.");
             return;
         }
 
+        var departments = _db.Departments.ToList();
+        var priorities = _db.IssuePriorities.ToList();
+
         var rules = new List<EscalationRule>();
 
         foreach (var sla in slaPolicies)
         {
-            // Level 1: Escalate to Department Manager if no response within 50% of first response time
+            var priority = priorities.FirstOrDefault(p => p.PriorityId == sla.PriorityId);
+            var isHighPriority = priority != null &&
+                (priority.PriorityCode == "CRITICAL" || priority.PriorityCode == "HIGH");
+
+            // ============================================================
+            // Level 1: No response warning
+            // OverdueMinutes = WarningBeforeMinutes → warn DepartmentManager of current dept
+            // ============================================================
             rules.Add(new EscalationRule
             {
                 SlaPolicyId = sla.Id,
-                OverdueMinutes = (int)(sla.FirstResponseMinutes * 1.5), // 150% of first response = overdue
+                OverdueMinutes = sla.WarningBeforeMinutes,
                 EscalationLevel = 1,
                 TargetRoleName = "DepartmentManager",
-                NotificationTitle = "Sự cố chưa được phản hồi",
-                NotificationTemplate = "Sự cố [{IssueCode}] đã quá hạn phản hồi đầu tiên ({FirstResponseDueAt}). Vui lòng kiểm tra và xử lý.",
+                NotificationTitle = "Cảnh báo: Sự cố chưa được phản hồi",
+                NotificationTemplate = "Sự cố [{IssueCode}] đã đến thời hạn phản hồi đầu tiên ({FirstResponseDueAt}). " +
+                    "Vui lòng kiểm tra và xử lý ngay.",
                 IsActive = true
             });
 
-            // Level 2: Escalate to Admin if no resolution within 75% of resolution time
+            // ============================================================
+            // Level 2: Resolution risk
+            // OverdueMinutes = ResolutionMinutes * 0.75 → escalate to parent department
+            // ============================================================
+            // Find a representative department for this SLA (from RoutingRules)
+            var routingRule = _db.RoutingRules
+                .FirstOrDefault(r => r.IssueTypeId == sla.IssueTypeId);
+            int? parentDeptId = null;
+
+            if (routingRule != null)
+            {
+                var currentDept = departments.FirstOrDefault(d => d.DepartmentId == routingRule.DepartmentId);
+                if (currentDept?.ParentDepartmentId != null)
+                    parentDeptId = currentDept.ParentDepartmentId;
+            }
+
             rules.Add(new EscalationRule
             {
                 SlaPolicyId = sla.Id,
-                OverdueMinutes = (int)(sla.ResolutionMinutes * 0.75), // 75% of resolution time
+                OverdueMinutes = (int)(sla.ResolutionMinutes * 0.75),
                 EscalationLevel = 2,
-                TargetRoleName = "Admin",
-                NotificationTitle = "Sự cố có nguy cơ trễ hạn",
-                NotificationTemplate = "Sự cố [{IssueCode}] sắp quá hạn giải quyết (due: {ResolutionDueAt}). Cần ưu tiên xử lý.",
+                TargetRoleName = "DepartmentManager",
+                TargetDepartmentId = parentDeptId, // Escalate to parent department manager
+                NotificationTitle = "Cảnh báo: Sự cố có nguy cơ trễ hạn giải quyết",
+                NotificationTemplate = "Sự cố [{IssueCode}] sắp quá hạn giải quyết (deadline: {ResolutionDueAt}). " +
+                    "Cần ưu tiên xử lý và báo cáo cấp trên.",
                 IsActive = true
             });
 
-            // Level 3: Escalate to specific department head if completely overdue
-            // Only for CRITICAL and HIGH priority issues
-            var priority = _db.IssuePriorities.FirstOrDefault(p => p.PriorityId == sla.PriorityId);
-            if (priority != null && (priority.PriorityCode == "CRITICAL" || priority.PriorityCode == "HIGH"))
+            // ============================================================
+            // Level 3: Overdue — different targets by priority
+            // CRITICAL/HIGH → DepartmentManager of grandparent (if exists)
+            // All priorities → Admin receives notification
+            // ============================================================
+            if (isHighPriority)
             {
-                var issueType = _db.IssueTypes.FirstOrDefault(t => t.IssueTypeId == sla.IssueTypeId);
-                var dept = issueType != null ? departments.FirstOrDefault() : null; // First matching dept as fallback
+                int? grandparentDeptId = null;
+                if (parentDeptId != null)
+                {
+                    var parent = departments.FirstOrDefault(d => d.DepartmentId == parentDeptId);
+                    if (parent?.ParentDepartmentId != null)
+                        grandparentDeptId = parent.ParentDepartmentId;
+                }
 
                 rules.Add(new EscalationRule
                 {
                     SlaPolicyId = sla.Id,
-                    OverdueMinutes = sla.ResolutionMinutes, // At resolution deadline
+                    OverdueMinutes = sla.ResolutionMinutes,
                     EscalationLevel = 3,
                     TargetRoleName = "DepartmentManager",
-                    TargetDepartmentId = dept?.DepartmentId,
-                    NotificationTitle = "Sự cố QUÁ HẠN giải quyết",
-                    NotificationTemplate = "Sự cố [{IssueCode}] đã QUÁ HẠN giải quyết. Cần báo cáo lãnh đạo và đề xuất phương án.",
+                    TargetDepartmentId = grandparentDeptId ?? parentDeptId,
+                    NotificationTitle = "[QUAN TRỌNG] Sự cố QUÁ HẠN giải quyết - Ưu tiên CAO",
+                    NotificationTemplate = "Sự cố [{IssueCode}] đã QUÁ HẠN giải quyết. " +
+                        "Yêu cầu báo cáo lãnh đạo cấp cao và đề xuất phương án xử lý khẩn cấp.",
                     IsActive = true
                 });
             }
+
+            // Admin always receives overdue notification
+            rules.Add(new EscalationRule
+            {
+                SlaPolicyId = sla.Id,
+                OverdueMinutes = sla.ResolutionMinutes,
+                EscalationLevel = isHighPriority ? 4 : 3,
+                TargetRoleName = "Admin",
+                NotificationTitle = $"[Admin] Sự cố QUÁ HẠN: [{priority?.PriorityCode ?? "?"}]",
+                NotificationTemplate = "Sự cố [{IssueCode}] (ưu tiên: {Priority}) đã quá hạn giải quyết. " +
+                    "Admin vui lòng kiểm tra và can thiệp.",
+                IsActive = true
+            });
         }
 
         _db.EscalationRules.AddRange(rules);
