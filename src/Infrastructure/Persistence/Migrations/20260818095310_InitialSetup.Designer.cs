@@ -10,11 +10,11 @@ using UrbanInfraSystem.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace UrbanInfraSystem.Infrastructure.Migrations
+namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260813095001_AddIssueAssignmentMembers")]
-    partial class AddIssueAssignmentMembers
+    [Migration("20260818095310_InitialSetup")]
+    partial class InitialSetup
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -183,6 +183,73 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.HasIndex("ParentAreaId");
 
                     b.ToTable("Areas", (string)null);
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.AuditLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("audit_log_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("ActorUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<Guid?>("CorrelationId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("EntityId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("entity_name");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<string>("NewValues")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("new_values");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2(0)")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("OldValues")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("old_values");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("IX_AuditLogs_OccurredAt");
+
+                    b.ToTable("AuditLogs", (string)null);
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Department", b =>
@@ -416,6 +483,10 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Property<DateTime?>("ClosedAt")
                         .HasColumnType("datetime2(0)");
 
+                    b.Property<string>("CustomTypeDescription")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -447,6 +518,9 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
+
+                    b.Property<long>("ReportId")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime>("ReportedAt")
                         .HasColumnType("datetime2(0)");
@@ -487,6 +561,9 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.HasIndex("PublicCode")
                         .IsUnique()
                         .HasDatabaseName("IX_Issues_PublicCode");
+
+                    b.HasIndex("ReportId")
+                        .HasDatabaseName("IX_Issues_ReportId");
 
                     b.HasIndex("ReportedAt")
                         .HasDatabaseName("IX_Issues_ReportedAt");
@@ -1022,6 +1099,100 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Report", b =>
+                {
+                    b.Property<long>("ReportId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ReportId"));
+
+                    b.Property<string>("AddressText")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("AreaId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<decimal>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("PublicCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("ReportedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<string>("ReporterId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.Property<int>("UpvoteCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("ReportId");
+
+                    b.HasIndex("AreaId");
+
+                    b.HasIndex("PublicCode")
+                        .IsUnique();
+
+                    b.HasIndex("ReportedAt");
+
+                    b.HasIndex("ReporterId");
+
+                    b.ToTable("Reports", (string)null);
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.ReportUpvote", b =>
+                {
+                    b.Property<long>("ReportId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(0)");
+
+                    b.HasKey("ReportId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ReportUpvotes", (string)null);
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RoutingRule", b =>
                 {
                     b.Property<int>("RoutingRuleId")
@@ -1272,6 +1443,14 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("ParentArea");
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.AuditLog", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Department", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.Department", "ParentDepartment")
@@ -1362,6 +1541,12 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Report", "Report")
+                        .WithMany("Issues")
+                        .HasForeignKey("ReportId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UrbanInfraSystem.Domain.Entities.IssueStatus", "Status")
                         .WithMany()
                         .HasForeignKey("StatusId")
@@ -1373,6 +1558,8 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                     b.Navigation("IssueType");
 
                     b.Navigation("Priority");
+
+                    b.Navigation("Report");
 
                     b.Navigation("Status");
                 });
@@ -1517,6 +1704,40 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Report", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Area", "Area")
+                        .WithMany()
+                        .HasForeignKey("AreaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Area");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.ReportUpvote", b =>
+                {
+                    b.HasOne("UrbanInfraSystem.Domain.Entities.Report", "Report")
+                        .WithMany("Upvotes")
+                        .HasForeignKey("ReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Report");
+                });
+
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.RoutingRule", b =>
                 {
                     b.HasOne("UrbanInfraSystem.Domain.Entities.Area", "Area")
@@ -1608,6 +1829,13 @@ namespace UrbanInfraSystem.Infrastructure.Migrations
             modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.IssueUpdate", b =>
                 {
                     b.Navigation("Attachments");
+                });
+
+            modelBuilder.Entity("UrbanInfraSystem.Domain.Entities.Report", b =>
+                {
+                    b.Navigation("Issues");
+
+                    b.Navigation("Upvotes");
                 });
 
             modelBuilder.Entity("UrbanInfraSystem.Infrastructure.Identity.ApplicationUser", b =>

@@ -101,11 +101,9 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentManagerSlaService, DepartmentManagerSlaService>();
         services.AddScoped<IDepartmentManagerStaffService, DepartmentManagerStaffService>();
 
-
         // --- Background Hosted Services ---
         services.AddHostedService<UrbanInfraSystem.Infrastructure.BackgroundServices.SlaCheckBackgroundService>();
 
-        services.AddScoped<IIssueService, IssueService>();
         services.AddScoped<IEscalationRuleService, EscalationRuleService>();
         services.AddScoped<IEscalationEventService, EscalationEventService>();
         // Escalation processor and background worker
