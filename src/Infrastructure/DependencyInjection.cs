@@ -96,6 +96,7 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentManagerDashboardService, DepartmentManagerDashboardService>();
         services.AddScoped<IDepartmentManagerIssueService, DepartmentManagerIssueService>();
         services.AddScoped<IDepartmentManagerSlaService, DepartmentManagerSlaService>();
+        services.AddScoped<IStaffService, StaffService>();
         services.AddScoped<IDepartmentManagerStaffService, DepartmentManagerStaffService>();
 
         // --- Background Hosted Services ---
