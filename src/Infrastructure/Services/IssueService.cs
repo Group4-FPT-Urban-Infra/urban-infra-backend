@@ -421,6 +421,17 @@ public class IssueService : IIssueService
             };
         }
 
+        var containsOtherType = issueTypes.Any(t =>
+            string.Equals(t.TypeCode, "OTHER", StringComparison.OrdinalIgnoreCase));
+        if (containsOtherType && string.IsNullOrWhiteSpace(request.CustomTypeDescription))
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = "Vui lòng mô tả cụ thể khi chọn loại sự cố OTHER."
+            };
+        }
+
         var area = await _context.Areas
             .FirstOrDefaultAsync(a => a.AreaId == request.AreaId && a.IsActive, cancellationToken);
         if (area == null)
@@ -514,6 +525,10 @@ public class IssueService : IIssueService
             AreaId = area.AreaId,
             PriorityId = priority.PriorityId,
             StatusId = status.StatusId,
+            CustomTypeDescription = issueTypes.First(t => t.IssueTypeId == typeId).TypeCode
+                .Equals("OTHER", StringComparison.OrdinalIgnoreCase)
+                    ? request.CustomTypeDescription?.Trim()
+                    : null,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
             AddressText = request.AddressText?.Trim(),
@@ -530,6 +545,7 @@ public class IssueService : IIssueService
             .Where(s => issueTypeIds.Contains(s.IssueTypeId) && s.PriorityId == priority.PriorityId)
             .ToListAsync(cancellationToken);
 
+        var initialUpdates = new Dictionary<long, IssueUpdate>();
         foreach (var issue in issues)
         {
             var policy = policies.FirstOrDefault(p => p.IssueTypeId == issue.IssueTypeId);
@@ -547,7 +563,7 @@ public class IssueService : IIssueService
             });
 
             var typeName = issueTypes.First(t => t.IssueTypeId == issue.IssueTypeId).TypeName;
-            _context.IssueUpdates.Add(new IssueUpdate
+            var initialUpdate = new IssueUpdate
             {
                 IssueId = issue.IssueId,
                 ToStatusId = status.StatusId,
@@ -555,7 +571,9 @@ public class IssueService : IIssueService
                 CreatedBy = reporterId,
                 IsSystemGenerated = true,
                 CreatedAt = reportedAt
-            });
+            };
+            initialUpdates[issue.IssueId] = initialUpdate;
+            _context.IssueUpdates.Add(initialUpdate);
 
             var routingRule = await _context.RoutingRules
                 .Include(r => r.Department)
@@ -597,6 +615,9 @@ public class IssueService : IIssueService
             });
         }
 
+        // Lấy ID của update khởi tạo trước khi lưu attachment.
+        await _context.SaveChangesAsync(cancellationToken);
+
         if (request.Images != null && request.Images.Count > 0)
         {
             var webRoot = _environment.WebRootPath;
@@ -625,7 +646,7 @@ public class IssueService : IIssueService
                 }
 
                 var fileUrl = $"/uploads/issues/{uniqueFileName}";
-                var attachment = new IssueAttachment
+                var attachment = new IssueAttachment(initialUpdates[issues[0].IssueId].Id)
                 {
                     // Ảnh gốc thuộc Report; trong schema chuyển tiếp gắn vào Issue đầu tiên.
                     IssueId = issues[0].IssueId,

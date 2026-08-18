@@ -26,7 +26,7 @@ public class IssueTypeService : IIssueTypeService
     public async Task<ApiResponse<IssueTypeResponse>> CreateAsync(CreateIssueTypeRequest request)
     {
         // 1. Validate: Kiểm tra TypeCode đã tồn tại chưa (bao gồm cả bản ghi đã xóa vì DB Unique Constraint)
-        var upperCode = request.TypeCode.ToUpperInvariant();
+        var upperCode = request.TypeCode.Trim().ToUpperInvariant();
         var existing = await _db.IssueTypes
             .FirstOrDefaultAsync(it => it.TypeCode == upperCode);
 
@@ -66,7 +66,7 @@ public class IssueTypeService : IIssueTypeService
         // 4. Tạo entity
         var issueType = new IssueType
         {
-            TypeCode = request.TypeCode.ToUpperInvariant(),
+            TypeCode = upperCode,
             TypeName = request.TypeName.Trim(),
             ParentIssueTypeId = request.ParentIssueTypeId,
             IconUrl = request.IconUrl?.Trim(),
@@ -205,7 +205,7 @@ public class IssueTypeService : IIssueTypeService
         // 1. Validate TypeCode mới (nếu thay đổi)
         if (!string.IsNullOrWhiteSpace(request.TypeCode))
         {
-            var upperCode = request.TypeCode.ToUpperInvariant();
+            var upperCode = request.TypeCode.Trim().ToUpperInvariant();
             var codeExists = await _db.IssueTypes
                 .AnyAsync(it => it.TypeCode == upperCode && it.IssueTypeId != id);
 
@@ -218,7 +218,7 @@ public class IssueTypeService : IIssueTypeService
                 };
             }
 
-            issueType.TypeCode = request.TypeCode.ToUpperInvariant();
+            issueType.TypeCode = upperCode;
         }
 
         // 2. Validate ParentIssueTypeId (nếu thay đổi)

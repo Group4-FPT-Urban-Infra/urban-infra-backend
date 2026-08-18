@@ -259,6 +259,12 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
         var issueStatus = await _context.IssueStatuses.FindAsync(new object[] { request.StatusId }, cancellationToken)
             ?? throw new KeyNotFoundException($"Khong tim thay trang thai co ID = {request.StatusId}.");
 
+        if (string.Equals(issueStatus.StatusCode, "CLOSED", StringComparison.OrdinalIgnoreCase)
+            && !issue.ResolvedAt.HasValue)
+        {
+            throw new InvalidOperationException("Sự cố phải chuyển sang RESOLVED trước khi CLOSED.");
+        }
+
         var now = DateTime.UtcNow;
         var fromStatusId = issue.StatusId;
 
@@ -279,6 +285,9 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
         var resolvedStatus = await _context.IssueStatuses.FirstOrDefaultAsync(s => s.StatusCode == "RESOLVED", cancellationToken);
         if (resolvedStatus != null && request.StatusId == resolvedStatus.StatusId)
             issue.ResolvedAt = now;
+
+        if (string.Equals(issueStatus.StatusCode, "CLOSED", StringComparison.OrdinalIgnoreCase))
+            issue.ClosedAt = now;
 
         await _context.SaveChangesAsync(cancellationToken);
 
