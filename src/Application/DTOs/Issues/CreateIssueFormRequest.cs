@@ -7,8 +7,12 @@ namespace UrbanInfraSystem.Application.DTOs.Issues;
 /// <summary>Dữ liệu multipart/form-data dùng khi công dân tạo báo cáo.</summary>
 public class CreateIssueFormRequest
 {
+    /// <summary>Giữ tương thích client cũ chỉ gửi một loại sự cố.</summary>
     [Range(1, int.MaxValue)]
-    public int IssueTypeId { get; set; }
+    public int? IssueTypeId { get; set; }
+
+    /// <summary>Các loại sự cố cần tách thành các Issue độc lập trong cùng một Report.</summary>
+    public List<int> IssueTypeIds { get; set; } = [];
 
     [Range(1, int.MaxValue)]
     public int AreaId { get; set; }
