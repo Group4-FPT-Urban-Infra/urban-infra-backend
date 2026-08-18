@@ -58,7 +58,6 @@ public class StaffController : ControllerBase
         var userId = _currentUser.UserId;
         if (string.IsNullOrEmpty(userId))
         {
-            // This check is redundant due to [Authorize] but good for safety.
             return Unauthorized();
         }
 
@@ -78,7 +77,6 @@ public class StaffController : ControllerBase
         var userId = _currentUser.UserId;
         if (string.IsNullOrEmpty(userId))
         {
-            // This check is redundant due to [Authorize] but good for safety.
             return Unauthorized();
         }
 
@@ -87,7 +85,7 @@ public class StaffController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy danh sách sự cố có phân trang và bộ lọc, trong phạm vi của cán bộ.
+    /// Lấy danh sách các sự cố có phân trang và bộ lọc, trong phạm vi của cán bộ.
     /// </summary>
     [HttpGet("incidents")]
     [ProducesResponseType(typeof(PagedResponse<StaffIncidentResponse>), StatusCodes.Status200OK)]
@@ -100,7 +98,6 @@ public class StaffController : ControllerBase
         var userId = _currentUser.UserId;
         if (string.IsNullOrEmpty(userId))
         {
-            // This check is redundant due to [Authorize] but good for safety.
             return Unauthorized();
         }
 
@@ -122,7 +119,6 @@ public class StaffController : ControllerBase
         var userId = _currentUser.UserId;
         if (string.IsNullOrEmpty(userId))
         {
-            // This check is redundant due to [Authorize] but good for safety.
             return Unauthorized();
         }
 

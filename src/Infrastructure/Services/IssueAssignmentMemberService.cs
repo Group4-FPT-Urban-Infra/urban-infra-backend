@@ -1,7 +1,13 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using UrbanInfraSystem.Application.DTOs.IssueAssignmentMembers;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Entities;
+using UrbanInfraSystem.Domain.Enums;
 using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
@@ -41,7 +47,7 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
     {
         var member = await _context.IssueAssignmentMembers
             .Include(x => x.Assignment)
-            .FirstOrDefaultAsync(x => x.MemberId == memberId, cancellationToken);
+            .FirstOrDefaultAsync(x => x.AssignmentId == memberId, cancellationToken);
 
         if (member is null) return null;
 
@@ -122,9 +128,9 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        var users = (await _context.Users
+        var users = await _context.Users
             .Where(u => u.Id == request.UserId || u.Id == assignedBy)
-            .ToDictionaryAsync(u => u.Id, cancellationToken));
+            .ToDictionaryAsync(u => u.Id, cancellationToken);
 
         member.Assignment = assignment;
         return Map(member, users);
@@ -133,61 +139,68 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
     public async Task<IssueAssignmentMemberResponse> UpdateMemberStatusAsync(
         long memberId,
         UpdateMemberStatusRequest request,
-        string userId,
+        string actorUserId,
         CancellationToken cancellationToken = default)
     {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
         var member = await _context.IssueAssignmentMembers
             .Include(x => x.Assignment)
-            .FirstOrDefaultAsync(x => x.MemberId == memberId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Khong tim thay thanh vien co ID = {memberId}.");
+            .FirstOrDefaultAsync(x => x.AssignmentId == memberId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Không tìm thấy phân công có ID = {memberId}.");
 
-        var validStatuses = new[] { AssignmentMemberStatus.Pending, AssignmentMemberStatus.Accepted, AssignmentMemberStatus.Rejected, AssignmentMemberStatus.Completed };
-        if (!validStatuses.Contains(request.Status.ToUpperInvariant()))
-            throw new ArgumentException($"Trang thai '{request.Status}' khong hop le. Cac trang thai hop le: {string.Join(", ", validStatuses)}.");
-
+        var validStatuses = new[] { AssignmentMemberStatus.Accepted, AssignmentMemberStatus.Rejected };
         var newStatus = request.Status.ToUpperInvariant();
+        if (!validStatuses.Contains(newStatus))
+            throw new ArgumentException($"Trạng thái '{request.Status}' không hợp lệ. Các trạng thái hợp lệ: {string.Join(", ", validStatuses)}.");
+
+        // Tra cứu thông tin người dùng thực tế
+        var user = await _context.Users.FindAsync(new object[] { member.UserId }, cancellationToken);
+        var userFullName = user?.FullName ?? member.UserId;
+
         var now = DateTime.UtcNow;
+        string updateNote;
 
         if (newStatus == AssignmentMemberStatus.Accepted)
         {
-            if (member.UserId != userId)
-                throw new UnauthorizedAccessException("Chi nhan vien duoc gan moi co the chap nhan.");
-
+            if (member.UserId != actorUserId)
+                throw new UnauthorizedAccessException("Chỉ nhân viên được gán mới có thể chấp nhận.");
             if (member.Status != AssignmentMemberStatus.Pending)
-                throw new InvalidOperationException("Chi co the chap nhan khi dang o trang thai PENDING.");
+                throw new InvalidOperationException("Chỉ có thể chấp nhận khi đang ở trạng thái PENDING.");
 
+            member.Status = AssignmentMemberStatus.Accepted;
             member.AcceptedAt = now;
+            updateNote = $"Nhân viên '{userFullName}' đã chấp nhận phân công.";
         }
-        else if (newStatus == AssignmentMemberStatus.Rejected)
+        else // Rejected
         {
-            if (member.UserId != userId)
-                throw new UnauthorizedAccessException("Chi nhan vien duoc gan moi co the tu choi.");
-
+            if (member.UserId != actorUserId)
+                throw new UnauthorizedAccessException("Chỉ nhân viên được gán mới có thể từ chối.");
             if (member.Status != AssignmentMemberStatus.Pending)
-                throw new InvalidOperationException("Chi co the tu choi khi dang o trang thai PENDING.");
+                throw new InvalidOperationException("Chỉ có thể từ chối khi đang ở trạng thái PENDING.");
 
+            member.Status = AssignmentMemberStatus.Rejected;
             member.EndedAt = now;
-        }
-        else if (newStatus == AssignmentMemberStatus.Completed)
-        {
-            if (member.UserId != userId)
-                throw new UnauthorizedAccessException("Chi nhan vien duoc gan moi co the danh dau hoan thanh.");
-
-            if (member.Status != AssignmentMemberStatus.Accepted)
-                throw new InvalidOperationException("Chi co the hoan thanh khi dang o trang thai ACCEPTED.");
-
-            member.EndedAt = now;
-        }
-
-        member.Status = newStatus;
-        if (!string.IsNullOrWhiteSpace(request.Note))
             member.Note = request.Note;
+            updateNote = $"Nhân viên '{userFullName}' đã từ chối phân công." + (string.IsNullOrWhiteSpace(request.Note) ? "" : $" Lý do: {request.Note.Trim()}");
+        }
+
+        // Tạo IssueUpdate
+        _context.IssueUpdates.Add(new IssueUpdate
+        {
+            IssueId = member.Assignment.IssueId,
+            CreatedBy = actorUserId,
+            Note = updateNote,
+            IsSystemGenerated = false,
+            CreatedAt = now
+        });
 
         await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-        var users = (await _context.Users
+        var users = await _context.Users
             .Where(u => u.Id == member.UserId || u.Id == member.AssignedBy)
-            .ToDictionaryAsync(u => u.Id, cancellationToken));
+            .ToDictionaryAsync(u => u.Id, cancellationToken);
 
         return Map(member, users);
     }
@@ -199,8 +212,8 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
     {
         var member = await _context.IssueAssignmentMembers
             .Include(x => x.Assignment)
-            .FirstOrDefaultAsync(x => x.MemberId == memberId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Khong tim thay thanh vien co ID = {memberId}.");
+            .FirstOrDefaultAsync(x => x.AssignmentId == memberId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Không tìm thấy thành viên có ID = {memberId}.");
 
         if (member.Status == AssignmentMemberStatus.Accepted)
             throw new InvalidOperationException("Khong the xoa nhan vien dang xu ly. Hay yeu cau ho hoan thanh hoac tu choi truoc.");
@@ -213,7 +226,7 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
 
     private static IssueAssignmentMemberResponse Map(IssueAssignmentMember x, Dictionary<string, ApplicationUser> users) => new()
     {
-        MemberId = x.MemberId,
+        MemberId = x.AssignmentId,
         AssignmentId = x.AssignmentId,
         UserId = x.UserId,
         UserFullName = users.TryGetValue(x.UserId, out var user) ? user.FullName : string.Empty,

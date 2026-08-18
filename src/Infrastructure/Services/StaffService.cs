@@ -1,9 +1,15 @@
-using Microsoft.EntityFrameworkCore;
-using UrbanInfraSystem.Application.DTOs.Staff;
-using UrbanInfraSystem.Application.Interfaces;
-using UrbanInfraSystem.Application.DTOs.Issues;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using UrbanInfraSystem.Application.DTOs;
+using UrbanInfraSystem.Application.DTOs.Issues;
+using UrbanInfraSystem.Application.DTOs.Staff;
+using UrbanInfraSystem.Application.Interfaces;
+using UrbanInfraSystem.Domain.Entities;
+using UrbanInfraSystem.Domain.Enums;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Services;
@@ -366,8 +372,8 @@ public class StaffService : IStaffService
                                    join user in _context.Users on member.UserId equals user.Id
                                    where member.UserId == staffUserId && member.IsActive
                                    select new { Member = member, User = user })
-                                  .Include(x => x.Member.Department)
-                                  .FirstOrDefaultAsync(cancellationToken);
+                              .Include(x => x.Member.Department)
+                              .FirstOrDefaultAsync(cancellationToken);
 
         if (memberAndUser?.User is null || memberAndUser.Member?.Department is null)
         {
