@@ -26,6 +26,10 @@ public class CreateIssueFormRequest
     [Required, MinLength(10), MaxLength(2000)]
     public string Description { get; set; } = default!;
 
+    /// <summary>Mô tả loại sự cố cụ thể khi chọn Issue Type có mã OTHER.</summary>
+    [MaxLength(1000)]
+    public string? CustomTypeDescription { get; set; }
+
     [MaxLength(300)]
     public string? AddressText { get; set; }
 
