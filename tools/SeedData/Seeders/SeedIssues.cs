@@ -1,16 +1,17 @@
 using Microsoft.Extensions.Logging;
-using NetTopologySuite.Geometries;
 using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.SeedData.Seeders;
 
+/// <summary>
+/// Seeds Reports, Issues, and IssueUpdates together in one pass.
+/// Each Report → one Issue → one or more IssueUpdates tracking workflow.
+/// </summary>
 public class SeedIssues
 {
     private readonly AppDbContext _db;
     private readonly ILogger _logger;
-    private const decimal TargetLat = 20.460213m;
-    private const decimal TargetLon = 106.138710m;
 
     public SeedIssues(AppDbContext db, ILogger logger)
     {
@@ -26,228 +27,353 @@ public class SeedIssues
             return;
         }
 
-        var adminUser = _db.Users.FirstOrDefault(u => u.Email == "admin@urbaninfra.vn");
-        if (adminUser == null)
+        var citizens = _db.Users
+            .Where(u => _db.UserRoles.Any(ur =>
+                _db.Roles.Any(r => r.Name == "Citizen" && r.Id == ur.RoleId) &&
+                ur.UserId == u.Id))
+            .ToList();
+
+        if (citizens.Count == 0)
         {
-            _logger.LogWarning("Admin user not found. Skipping issue seeding.");
+            _logger.LogWarning("No citizen users found. Skipping issue seeding.");
             return;
         }
 
         var issueTypes = _db.IssueTypes.ToList();
         var priorities = _db.IssuePriorities.ToList();
         var statuses = _db.IssueStatuses.ToList();
-        var areas = _db.Areas.ToList();
+        var districts = _db.Areas.Where(a => a.AreaType == "District").ToList();
+        var wards = _db.Areas.Where(a => a.AreaType == "Ward").ToList();
 
-        if (issueTypes.Count == 0 || priorities.Count == 0 || statuses.Count == 0 || areas.Count == 0)
+        if (districts.Count == 0 || wards.Count == 0)
         {
-            _logger.LogWarning("Required reference data missing. Run other seeders first.");
+            _logger.LogWarning("Areas not properly seeded. Run SeedAreas first.");
             return;
         }
 
-        var haLongArea = areas.FirstOrDefault(a => a.AreaCode == "HL");
-        var issues = GenerateSampleIssues(adminUser.Id, issueTypes, priorities, statuses, areas);
-
-        _db.Issues.AddRange(issues);
-        await _db.SaveChangesAsync();
-
-        _logger.LogInformation("Seeded {Count} issues near ({Lat}, {Lon}).", issues.Count, TargetLat, TargetLon);
-    }
-
-    private List<Issue> GenerateSampleIssues(
-        string reporterId,
-        List<IssueType> issueTypes,
-        List<IssuePriority> priorities,
-        List<IssueStatus> statuses,
-        List<Area> areas)
-    {
-        var issueData = new List<(string Title, string Desc, string TypeCode, string PriorityCode, string StatusCode, decimal Lat, decimal Lon, string Address)>
-        {
-            (
-                "Đèn đường không sáng tại đường Trần Hưng Đạo",
-                "Từ ngày 10/08, đoạn đường Trần Hưng Đạo gần cầu Bãi Cháy đèn đường không hoạt động, rất nguy hiểm vào ban đêm.",
-                "LIGHT", "HIGH", "IN_PROGRESS",
-                20.4560m, 106.1350m,
-                "Đường Trần Hưng Đạo, TP. Hạ Long"
-            ),
-            (
-                "Ổ gà lớn trên đường Vườn Đào",
-                "Xuất hiện ổ gà có đường kính khoảng 50cm, sâu 15cm trên mặt đường. Đã gây ra 1 vụ tai nạn xe máy.",
-                "POTHOLE", "CRITICAL", "ASSIGNED",
-                20.4555m, 106.1385m,
-                "Đường Vườn Đào, Phường Vườn Đào, TP. Hạ Long"
-            ),
-            (
-                "Khu vực ngập úng tại Bãi Cháy Đầm Hà",
-                "Mỗi khi mưa to, khu vực Bãi Cháy Đầm Hà bị ngập nước cục bộ, nước đọng không thoát được.",
-                "FLOOD", "HIGH", "NEW",
-                20.4625m, 106.1345m,
-                "Khu vực Bãi Cháy Đầm Hà, TP. Hạ Long"
-            ),
-            (
-                "Biển báo giao thông bị mất tại ngã tư Hồng Gai",
-                "Biển cấm rẽ trái tại ngã tư Hồng Gai đã bị mất từ 2 tuần trước, gây nhầm lẫn cho người tham gia giao thông.",
-                "SIGN", "MEDIUM", "PENDING_INFO",
-                20.4580m, 106.1370m,
-                "Ngã tư Hồng Gai, TP. Hạ Long"
-            ),
-            (
-                "Mặt đường nứt lớn trên đường Bãi Cháy",
-                "Mặt đường quốc lộ 18 đoạn qua Bãi Cháy xuất hiện vết nứt dài 20m, cần sửa chữa trước mùa mưa bão.",
-                "ROAD", "HIGH", "IN_PROGRESS",
-                20.4530m, 106.1390m,
-                "Đường Bãi Cháy, TP. Hạ Long"
-            ),
-            (
-                "Nắp cống bị mất tại khu vực Hà Tuông",
-                "Nắp cống thoát nước tại khu vực Hà Tuông bị mất, tạo thành hố sâu nguy hiểm cho người đi đường.",
-                "DRAIN", "HIGH", "ASSIGNED",
-                20.4590m, 106.1365m,
-                "Khu vực Hà Tuông, TP. Hạ Long"
-            ),
-            (
-                "Cây xanh nguy hiểm tại công viên Bãi Cháy",
-                "Một cây bàng lớn trong công viên Bãi Cháy có nhiều cành khô sắp gãy, cần cắt tỉa gấp.",
-                "TREE", "MEDIUM", "NEW",
-                20.4545m, 106.1380m,
-                "Công viên Bãi Cháy, TP. Hạ Long"
-            ),
-            (
-                "Điểm tập kết rác bốc mùi hôi tại Cao Thắng",
-                "Thùng rác tại ngõ 5 đường Cao Thắng tràn ra đường, bốc mùi hôi nồng nặc ảnh hưởng đến sinh hoạt người dân.",
-                "GARBAGE", "LOW", "NEW",
-                20.4550m, 106.1375m,
-                "Đường Cao Thắng, Phường Cao Thắng, TP. Hạ Long"
-            ),
-            (
-                "Đèn đường nhấp nháy liên tục tại Hồi Hải Bãi Cháy",
-                "Trụ đèn cao áp trước số nhà 45 đường Hồi Hải nhấp nháy liên tục 3 ngày nay, có nguy cơ chập điện.",
-                "LIGHT", "MEDIUM", "NEW",
-                20.4515m, 106.1395m,
-                "Đường Hồi Hải Bãi Cháy, TP. Hạ Long"
-            ),
-            (
-                "Vỉa hè sụt lún trước trường học Vườn Đào",
-                "Vỉa hè trước cổng trường Tiểu học Vườn Đào bị sụt lún 1 đoạn 3m, gây nguy hiểm cho học sinh.",
-                "POTHOLE", "HIGH", "RESOLVED",
-                20.4570m, 106.1380m,
-                "Trước trường Tiểu học Vườn Đào, TP. Hạ Long"
-            ),
-            (
-                "Biển báo giới hạn tốc độ bị gãy tại quốc lộ 18",
-                "Biển giới hạn tốc độ 40km/h tại km15 quốc lộ 18 bị gãy chân, nghiêng sang một bên.",
-                "SIGN", "LOW", "IN_PROGRESS",
-                20.4605m, 106.1360m,
-                "Quốc lộ 18, TP. Hạ Long"
-            ),
-            (
-                "Mặt đường lún nặng tại cầu Bãi Cháy",
-                "Mặt đường dẫn lên cầu Bãi Cháy bị lún 2 điểm, gây rung lắc mạnh khi xe qua.",
-                "ROAD", "HIGH", "ASSIGNED",
-                20.4595m, 106.1355m,
-                "Đường dẫn cầu Bãi Cháy, TP. Hạ Long"
-            ),
-            (
-                "Cống thoát nước bị tắc nghẽn tại Trần Hưng Đạo",
-                "Cống thoát nước trên đường Trần Hưng Đạo bị tắc rác và bùn, nước không thoát được khi mưa.",
-                "DRAIN", "MEDIUM", "NEW",
-                20.4610m, 106.1340m,
-                "Đường Trần Hưng Đạo, TP. Hạ Long"
-            ),
-            (
-                "Cây phong lá đỏ nghiêng về đường điện cao áp",
-                "Cây phong lá đỏ cao 8m nghiêng về phía đường dây điện, cần xử lý trước mùa mưa bão.",
-                "TREE", "HIGH", "NEW",
-                20.4630m, 106.1370m,
-                "Khu vực Bãi Cháy Đầm Hà, TP. Hạ Long"
-            ),
-            (
-                "Rác thải xây dựng đổ trộm tại bãi đất trống Vườn Đào",
-                "Một lượng lớn rác thải xây dựng (gạch, bê tông) bị đổ trộm tại bãi đất trống gần vườn hoa Vườn Đào.",
-                "GARBAGE", "MEDIUM", "ASSIGNED",
-                20.4640m, 106.1385m,
-                "Bãi đất trống Vườn Đào, TP. Hạ Long"
-            )
-        };
-
-        var existingCodes = _db.Reports.Select(i => i.PublicCode)
-            .Concat(_db.Issues.Select(i => i.PublicCode))
-            .ToHashSet();
-        var haLongArea = areas.FirstOrDefault(a => a.AreaCode == "HL") ?? areas.First();
-
-        var issues = new List<Issue>();
+        var issueData = GetSampleIssues();
         var random = new Random(42);
         var now = DateTime.UtcNow;
 
-        foreach (var (title, desc, typeCode, priorityCode, statusCode, lat, lon, address) in issueData)
+        int seeded = 0;
+
+        foreach (var data in issueData)
         {
-            var issueType = issueTypes.FirstOrDefault(t => t.TypeCode == typeCode);
-            var priority = priorities.FirstOrDefault(p => p.PriorityCode == priorityCode);
-            var status = statuses.FirstOrDefault(s => s.StatusCode == statusCode);
+            var issueType = issueTypes.FirstOrDefault(t => t.TypeCode == data.TypeCode);
+            var priority = priorities.FirstOrDefault(p => p.PriorityCode == data.PriorityCode);
+            var status = statuses.FirstOrDefault(s => s.StatusCode == data.StatusCode);
 
             if (issueType == null || priority == null || status == null) continue;
 
-            var code = GeneratePublicCode(existingCodes);
-            existingCodes.Add(code);
+            // Pick district and ward
+            var district = districts.First(d => d.AreaCode == data.DistrictCode);
+            var districtWards = wards.Where(w => w.ParentAreaId == district.AreaId).ToList();
+            var ward = districtWards.Count > 0
+                ? districtWards[random.Next(districtWards.Count)]
+                : wards[random.Next(wards.Count)];
 
-            var reportedAt = now.AddDays(-random.Next(1, 30));
-            var resolvedAt = status.StatusCode == "RESOLVED" || status.StatusCode == "CLOSED"
-                ? reportedAt.AddDays(random.Next(1, 7))
-                : (DateTime?)null;
-            var closedAt = status.StatusCode == "CLOSED" ? resolvedAt?.AddDays(random.Next(1, 3)) : null;
+            // Pick citizen reporter
+            var citizen = citizens[random.Next(citizens.Count)];
 
-            var upvoteCount = random.Next(0, 15);
+            // Timing
+            var reportedAt = now.AddDays(-random.Next(1, 60));
+            var statusCode = data.StatusCode;
+
+            // Resolve/close times based on status
+            DateTime? resolvedAt = null;
+            DateTime? closedAt = null;
+            if (statusCode == "RESOLVED" || statusCode == "CLOSED" || statusCode == "REQUEST_REOPEN")
+                resolvedAt = reportedAt.AddDays(random.Next(1, 7));
+            if (statusCode == "CLOSED")
+                closedAt = resolvedAt?.AddDays(random.Next(1, 3));
+
+            // ====================== Report ======================
             var report = new Report
             {
-                PublicCode = code,
-                ReporterId = reporterId,
-                AreaId = haLongArea.AreaId,
-                Title = title,
-                Description = desc,
-                AddressText = address,
-                Latitude = lat,
-                Longitude = lon,
+                PublicCode = $"REP-{now.Year}-{1000 + seeded + 1:D4}",
+                ReporterId = citizen.Id,
+                AreaId = district.AreaId,
+                Title = data.Title,
+                Description = data.Description,
+                AddressText = data.Address,
+                Latitude = (ward.CentroidLatitude ?? district.CentroidLatitude ?? 20.9521m) + (decimal)(random.NextDouble() * 0.002 - 0.001),
+                Longitude = (ward.CentroidLongitude ?? district.CentroidLongitude ?? 106.9305m) + (decimal)(random.NextDouble() * 0.002 - 0.001),
                 ReportedAt = reportedAt,
                 CreatedAt = reportedAt,
+                UpdatedAt = reportedAt,
                 IsPublic = true,
-                UpvoteCount = upvoteCount
+                IsArchived = false
             };
+            _db.Reports.Add(report);
+            await _db.SaveChangesAsync();
 
-            issues.Add(new Issue
+            // ====================== ReportIssueType ======================
+            _db.ReportIssueTypes.Add(new ReportIssueType
             {
-                Report = report,
-                PublicCode = code,
-                ReporterId = reporterId,
+                ReportId = report.ReportId,
                 IssueTypeId = issueType.IssueTypeId,
-                AreaId = haLongArea.AreaId,
+                IssueTypeName = issueType.TypeName,
+                IssueTypeCode = issueType.TypeCode,
+                CreatedAt = reportedAt
+            });
+
+            // ====================== Issue ======================
+            var issue = new Issue
+            {
+                ReportId = report.ReportId,
+                PublicCode = $"ISS-{now.Year}-{1000 + seeded + 1:D4}",
+                ReporterId = citizen.Id,
+                IssueTypeId = issueType.IssueTypeId,
+                AreaId = ward.AreaId,
                 PriorityId = priority.PriorityId,
                 StatusId = status.StatusId,
-                Title = title,
-                Description = desc,
-                AddressText = address,
-                Latitude = lat,
-                Longitude = lon,
+                Title = data.Title,
+                Description = data.Description,
+                AddressText = data.Address,
+                Latitude = report.Latitude,
+                Longitude = report.Longitude,
                 ReportedAt = reportedAt,
                 ResolvedAt = resolvedAt,
                 ClosedAt = closedAt,
                 IsPublic = true,
-                UpvoteCount = upvoteCount
-            });
+                IsArchived = false,
+                UpvoteCount = random.Next(0, 15)
+            };
+            _db.Issues.Add(issue);
+            await _db.SaveChangesAsync();
+
+            // ====================== IssueUpdates (workflow) ======================
+            var updates = BuildWorkflowUpdates(issue, reportedAt, statusCode, random);
+            if (updates.Count > 0)
+            {
+                _db.IssueUpdates.AddRange(updates);
+                await _db.SaveChangesAsync();
+            }
+
+            seeded++;
         }
 
-        return issues;
+        _logger.LogInformation("Seeded {Count} reports, issues, and their updates.", seeded);
     }
 
-    private static string GeneratePublicCode(HashSet<string> existing)
+    private List<IssueUpdate> BuildWorkflowUpdates(Issue issue, DateTime reportedAt, string finalStatus, Random random)
     {
-        var year = DateTime.UtcNow.Year;
-        var counter = 1;
-        string code;
-        do
-        {
-            code = $"ISS-{year}-{counter:D6}";
-            counter++;
-        } while (existing.Contains(code));
+        var updates = new List<IssueUpdate>();
+        var staffUsers = _db.Users
+            .Where(u => _db.UserRoles.Any(ur =>
+                _db.Roles.Any(r => (r.Name == "DepartmentStaff" || r.Name == "DepartmentManager") && r.Id == ur.RoleId) &&
+                ur.UserId == u.Id))
+            .ToList();
+        var staffId = staffUsers.Count > 0 ? staffUsers[random.Next(staffUsers.Count)].Id : issue.ReporterId;
 
-        return code;
+        // Step 1: System-initiated creation (NEW)
+        updates.Add(new IssueUpdate
+        {
+            IssueId = issue.IssueId,
+            CreatedBy = issue.ReporterId,
+            FromStatusId = null,
+            ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "NEW").StatusId,
+            Note = "Công dân gửi phản ánh qua hệ thống.",
+            IsSystemGenerated = true,
+            CreatedAt = reportedAt
+        });
+
+        if (finalStatus == "NEW") return updates;
+
+        // Step 2: NEW → ASSIGNED
+        var assignedAt = reportedAt.AddMinutes(random.Next(10, 120));
+        updates.Add(new IssueUpdate
+        {
+            IssueId = issue.IssueId,
+            CreatedBy = staffId,
+            FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "NEW").StatusId,
+            ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "ASSIGNED").StatusId,
+            Note = "Hệ thống tự động phân công đơn vị xử lý theo quy tắc định tuyến.",
+            IsSystemGenerated = true,
+            CreatedAt = assignedAt
+        });
+
+        if (finalStatus == "ASSIGNED") return updates;
+
+        // Step 3: ASSIGNED → IN_PROGRESS
+        var startedAt = assignedAt.AddMinutes(random.Next(30, 240));
+        updates.Add(new IssueUpdate
+        {
+            IssueId = issue.IssueId,
+            CreatedBy = staffId,
+            FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "ASSIGNED").StatusId,
+            ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "IN_PROGRESS").StatusId,
+            Note = "Nhân viên tiếp nhận và bắt đầu xử lý sự cố.",
+            IsSystemGenerated = false,
+            CreatedAt = startedAt
+        });
+
+        if (finalStatus == "IN_PROGRESS") return updates;
+
+        // Step 4: IN_PROGRESS → intermediate states
+        var progressedAt = startedAt.AddHours(random.Next(1, 12));
+
+        if (finalStatus == "PENDING_INFO")
+        {
+            updates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = staffId,
+                FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "IN_PROGRESS").StatusId,
+                ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "PENDING_INFO").StatusId,
+                Note = "Cần bổ sung hình ảnh/thông tin từ công dân để xử lý.",
+                IsSystemGenerated = false,
+                CreatedAt = progressedAt
+            });
+            return updates;
+        }
+
+        if (finalStatus == "REQUEST_REOPEN")
+        {
+            // IN_PROGRESS → RESOLVED first
+            var resolvedAt2 = progressedAt.AddHours(random.Next(1, 8));
+            updates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = staffId,
+                FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "IN_PROGRESS").StatusId,
+                ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "RESOLVED").StatusId,
+                Note = "Đơn vị xử lý xác nhận đã hoàn thành công việc.",
+                IsSystemGenerated = false,
+                CreatedAt = resolvedAt2
+            });
+
+            // RESOLVED → REQUEST_REOPEN
+            var reopenAt = resolvedAt2.AddHours(random.Next(1, 24));
+            updates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = issue.ReporterId,
+                FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "RESOLVED").StatusId,
+                ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "REQUEST_REOPEN").StatusId,
+                Note = "Công dân yêu cầu xử lý lại vì chất lượng không đạt yêu cầu.",
+                IsSystemGenerated = false,
+                CreatedAt = reopenAt
+            });
+
+            // REQUEST_REOPEN → IN_PROGRESS
+            var reacceptedAt = reopenAt.AddHours(random.Next(1, 12));
+            updates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = staffId,
+                FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "REQUEST_REOPEN").StatusId,
+                ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "IN_PROGRESS").StatusId,
+                Note = "Đơn vị xử lý chấp nhận yêu cầu và tiếp tục xử lý.",
+                IsSystemGenerated = false,
+                CreatedAt = reacceptedAt
+            });
+            return updates;
+        }
+
+        if (finalStatus == "RESOLVED")
+        {
+            updates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = staffId,
+                FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "IN_PROGRESS").StatusId,
+                ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "RESOLVED").StatusId,
+                Note = "Sự cố đã được xử lý hoàn tất.",
+                IsSystemGenerated = false,
+                CreatedAt = progressedAt
+            });
+            return updates;
+        }
+
+        if (finalStatus == "CLOSED")
+        {
+            var resolvedAt3 = progressedAt.AddHours(random.Next(1, 8));
+            updates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = staffId,
+                FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "IN_PROGRESS").StatusId,
+                ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "RESOLVED").StatusId,
+                Note = "Đơn vị xử lý xác nhận đã hoàn thành công việc.",
+                IsSystemGenerated = false,
+                CreatedAt = resolvedAt3
+            });
+
+            var closedAt2 = resolvedAt3.AddHours(random.Next(1, 48));
+            updates.Add(new IssueUpdate
+            {
+                IssueId = issue.IssueId,
+                CreatedBy = issue.ReporterId,
+                FromStatusId = _db.IssueStatuses.First(s => s.StatusCode == "RESOLVED").StatusId,
+                ToStatusId = _db.IssueStatuses.First(s => s.StatusCode == "CLOSED").StatusId,
+                Note = "Công dân xác nhận hài lòng và đóng sự cố.",
+                IsSystemGenerated = false,
+                CreatedAt = closedAt2
+            });
+            return updates;
+        }
+
+        return updates;
     }
+
+    private static List<SampleIssueData> GetSampleIssues()
+    {
+        return new List<SampleIssueData>
+        {
+            // NEW (2)
+            new("Đèn đường không sáng tại phường Trần Hưng Đạo", "Đoạn đường Nguyễn Trãi gần ngã tư đèn đường không hoạt động, rất nguy hiểm ban đêm.", "LIGHT", "HIGH", "NEW", "HL", "Đường Nguyễn Trãi, P. Trần Hưng Đạo, TP. Hạ Long"),
+            new("Khu vực ngập úng tại phường Vườn Đào", "Mỗi khi mưa to, khu vực phố Vườn Đào bị ngập nước cục bộ, nước đọng không thoát.", "FLOOD", "HIGH", "NEW", "HL", "Phố Vườn Đào, P. Vườn Đào, TP. Hạ Long"),
+
+            // ASSIGNED (3)
+            new("Ổ gà lớn trên đường Hà Tuông", "Xuất hiện ổ gà đường kính ~50cm, sâu 15cm. Đã gây ra vụ tai nạn xe máy.", "POTHOLE", "CRITICAL", "ASSIGNED", "HL", "Đường Hà Tuông, P. Hà Tuông, TP. Hạ Long"),
+            new("Biển cấm rẽ trái tại ngã tư Hồi Hải mất", "Biển cấm rẽ trái tại ngã tư đã mất 2 tuần, gây nhầm lẫn cho người tham gia giao thông.", "SIGN", "MEDIUM", "ASSIGNED", "HL", "Ngã tư Hồi Hải, P. Hồi Hải, TP. Hạ Long"),
+            new("Nắp cống bị mất tại phường Cao Thắng", "Nắp cống thoát nước tại khu vực bị mất, tạo thành hố sâu nguy hiểm cho người đi đường.", "DRAIN", "HIGH", "ASSIGNED", "HL", "P. Cao Thắng, TP. Hạ Long"),
+
+            // IN_PROGRESS (5)
+            new("Mặt đường nứt lớn trên đường Vườn Đào", "Mặt đường đoạn qua phố Vườn Đào xuất hiện vết nứt dài 20m, cần sửa chữa trước mùa mưa bão.", "ROAD", "HIGH", "IN_PROGRESS", "HL", "Đường Vườn Đào, P. Vườn Đào, TP. Hạ Long"),
+            new("Cây xanh nguy hiểm tại vườn hoa Trần Hưng Đạo", "Một cây bàng lớn có nhiều cành khô sắp gãy, cần cắt tỉa gấp.", "TREE", "MEDIUM", "IN_PROGRESS", "HL", "Vườn hoa Trần Hưng Đạo, P. Trần Hưng Đạo, TP. Hạ Long"),
+            new("Điểm tập kết rác bốc mùi hôi tại ngõ 5 Hà Tuông", "Thùng rác tràn ra đường, bốc mùi hôi nồng nặc ảnh hưởng đến sinh hoạt người dân.", "GARBAGE", "LOW", "IN_PROGRESS", "HL", "Ngõ 5 Hà Tuông, P. Hà Tuông, TP. Hạ Long"),
+            new("Cống thoát nước bị tắc nghẽn tại phường Cao Thắng", "Cống thoát nước bị tắc rác và bùn, nước không thoát được khi mưa.", "DRAIN", "MEDIUM", "IN_PROGRESS", "HL", "P. Cao Thắng, TP. Hạ Long"),
+            new("Đèn LED nhấp nháy liên tục tại đường Hồi Hải", "Trụ đèn cao áp trước số nhà 45 nhấp nháy liên tục 3 ngày, có nguy cơ chập điện.", "LIGHT", "MEDIUM", "IN_PROGRESS", "HL", "Đường Hồi Hải, P. Hồi Hải, TP. Hạ Long"),
+
+            // PENDING_INFO (2)
+            new("Mặt đường lún nặng tại đường Trần Hưng Đạo", "Mặt đường dẫn bị lún 2 điểm, gây rung lắc mạnh khi xe qua. Cần bổ sung ảnh chi tiết.", "ROAD", "HIGH", "PENDING_INFO", "HL", "Đường Trần Hưng Đạo, P. Trần Hưng Đạo, TP. Hạ Long"),
+            new("Ổ gà nhỏ tại phường Vườn Đào", "Có ổ gà nhỏ trên vỉa hè, cần bổ sung thêm hình ảnh để đánh giá mức độ.", "POTHOLE", "LOW", "PENDING_INFO", "HL", "P. Vườn Đào, TP. Hạ Long"),
+
+            // REQUEST_REOPEN (2)
+            new("Vỉa hè sụt lún trước trường học — Yêu cầu xử lý lại", "Sửa chữa vỉa hè trước trường học xong nhưng sau 2 ngày lại sụt tiếp. Công dân yêu cầu xử lý lại.", "POTHOLE", "HIGH", "REQUEST_REOPEN", "HL", "Trước trường THCS Trần Hưng Đạo, P. Trần Hưng Đạo, TP. Hạ Long"),
+            new("Biển báo giới hạn tốc độ tại Hà Tuông bị gãy", "Biển giới hạn 40km/h được thay mới nhưng lắp nghiêng, cần điều chỉnh lại.", "SIGN", "LOW", "REQUEST_REOPEN", "HL", "Đường Hà Tuông, P. Hà Tuông, TP. Hạ Long"),
+
+            // RESOLVED (2)
+            new("Rác thải xây dựng đổ trộm tại bãi đất trống Hồi Hải", "Lượng lớn rác thải xây dựng (gạch, bê tông) đã được thu gom và xử lý.", "GARBAGE", "MEDIUM", "RESOLVED", "HL", "Bãi đất trống Hồi Hải, P. Hồi Hải, TP. Hạ Long"),
+            new("Cây phong nghiêng về đường điện cao áp tại Cao Thắng", "Cây phong cao 8m đã được cắt tỉa an toàn, không còn nguy hiểm.", "TREE", "HIGH", "RESOLVED", "HL", "Khu vực phố Cao Thắng, P. Cao Thắng, TP. Hạ Long"),
+
+            // CLOSED (2)
+            new("Đèn đường cao áp không sáng tại phường Vườn Đào", "Trụ đèn đã được thay bóng mới, hoạt động bình thường. Công dân xác nhận hài lòng.", "LIGHT", "HIGH", "CLOSED", "HL", "Đường Vườn Đào, P. Vườn Đào, TP. Hạ Long"),
+            new("Ổ gà nhỏ trên vỉa hè Hà Tuông", "Vỉa hè đã được sửa chữa và san phẳng. Công dân xác nhận hài lòng.", "POTHOLE", "MEDIUM", "CLOSED", "HL", "Vỉa hè đường Hà Tuông, P. Hà Tuông, TP. Hạ Long"),
+
+            // Uông Bí district
+            new("Ngập úng khu vực phường Vất Tân khi mưa lớn", "Mỗi trận mưa lớn, khu vực phường Vất Tân ngập nước cục bộ 30cm.", "FLOOD", "HIGH", "IN_PROGRESS", "UB", "P. Vất Tân, TP. Uông Bí, Quảng Ninh"),
+            new("Biển báo giao thông tại ngã tư Quang Trung bị mất", "Biển cấm rẽ phải tại ngã tư Quang Trung đã mất 1 tuần.", "SIGN", "MEDIUM", "ASSIGNED", "UB", "Ngã tư Quang Trung, P. Quang Trung, TP. Uông Bí"),
+
+            // Cẩm Phả district
+            new("Mặt đường nhựa bị nứt nghiêm trọng tại Cẩm Mỹ Trung", "Vết nứt dài 30m trên mặt đường nhựa, có nguy cơ mở rộng.", "ROAD", "HIGH", "IN_PROGRESS", "CP", "Đường Cẩm Mỹ Trung, P. Cẩm Mỹ Trung, TP. Cẩm Phả"),
+            new("Điểm tập kết rác bốc mùi tại Cẩm Đông", "Thùng rác tại ngõ 3 Cẩm Đông tràn ra đường.", "GARBAGE", "LOW", "NEW", "CP", "Ngõ 3 Cẩm Đông, P. Cẩm Đông, TP. Cẩm Phả"),
+
+            // Móng Cái district
+            new("Nắp cống bị vỡ tại phường Ka Long", "Miệng cống thoát nước bị vỡ, tạo hố sâu nguy hiểm cho người đi đường.", "DRAIN", "CRITICAL", "ASSIGNED", "MC", "P. Ka Long, TP. Móng Cái, Quảng Ninh"),
+            new("Đèn đường không hoạt động tại phường Ninh Mỹ", "Trụ đèn cao áp trước số nhà 20 không sáng suốt 1 tuần.", "LIGHT", "MEDIUM", "IN_PROGRESS", "MC", "P. Ninh Mỹ, TP. Móng Cái, Quảng Ninh"),
+        };
+    }
+
+    private record SampleIssueData(
+        string Title,
+        string Description,
+        string TypeCode,
+        string PriorityCode,
+        string StatusCode,
+        string DistrictCode,
+        string Address
+    );
 }

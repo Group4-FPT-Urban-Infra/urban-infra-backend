@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using NetTopologySuite.Geometries;
 using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
@@ -24,9 +23,9 @@ public class SeedAreas
             return;
         }
 
-        var targetLat = 20.460213m;
-        var targetLon = 106.138710m;
-
+        // ============================================================
+        // Province
+        // ============================================================
         var quangNinh = new Area
         {
             AreaCode = "QN",
@@ -39,13 +38,16 @@ public class SeedAreas
             UpdatedAt = DateTime.UtcNow
         };
 
+        // ============================================================
+        // Districts (AreaType = "District") under Quang Ninh
+        // ============================================================
         var haLong = new Area
         {
             AreaCode = "HL",
             AreaName = "Thành phố Hạ Long",
-            AreaType = "City",
-            CentroidLatitude = targetLat,
-            CentroidLongitude = targetLon,
+            AreaType = "District",
+            CentroidLatitude = 20.9521m,
+            CentroidLongitude = 106.9305m,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -53,121 +55,161 @@ public class SeedAreas
         quangNinh.SubAreas.Add(haLong);
         haLong.ParentAreaId = quangNinh.AreaId;
 
-        var hongGai = new Area
+        var uongBi = new Area
         {
-            AreaCode = "HG",
-            AreaName = "Quận Hồng Gai",
+            AreaCode = "UB",
+            AreaName = "Thành phố Uông Bí",
             AreaType = "District",
-            CentroidLatitude = 20.9527m,
-            CentroidLongitude = 106.9981m,
+            CentroidLatitude = 21.0367m,
+            CentroidLongitude = 106.7681m,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        haLong.SubAreas.Add(hongGai);
-        hongGai.ParentAreaId = haLong.AreaId;
+        quangNinh.SubAreas.Add(uongBi);
+        uongBi.ParentAreaId = quangNinh.AreaId;
 
-        var baiChay = new Area
+        var camPha = new Area
         {
-            AreaCode = "BC",
-            AreaName = "Quận Bãi Cháy",
+            AreaCode = "CP",
+            AreaName = "Thành phố Cẩm Phả",
             AreaType = "District",
-            CentroidLatitude = 20.9501m,
-            CentroidLongitude = 106.9634m,
+            CentroidLatitude = 21.0219m,
+            CentroidLongitude = 107.0483m,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        haLong.SubAreas.Add(baiChay);
-        baiChay.ParentAreaId = haLong.AreaId;
+        quangNinh.SubAreas.Add(camPha);
+        camPha.ParentAreaId = quangNinh.AreaId;
 
-        var tranHungDao = new Area
+        var mongCai = new Area
         {
-            AreaCode = "THD",
-            AreaName = "Phường Trần Hưng Đạo",
-            AreaType = "Ward",
-            CentroidLatitude = 20.9610m,
-            CentroidLongitude = 106.9952m,
+            AreaCode = "MC",
+            AreaName = "Thành phố Móng Cái",
+            AreaType = "District",
+            CentroidLatitude = 21.5254m,
+            CentroidLongitude = 107.9273m,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-        hongGai.SubAreas.Add(tranHungDao);
-        tranHungDao.ParentAreaId = hongGai.AreaId;
+        quangNinh.SubAreas.Add(mongCai);
+        mongCai.ParentAreaId = quangNinh.AreaId;
 
-        var caoThang = new Area
+        // ============================================================
+        // Wards (AreaType = "Ward") under Hạ Long
+        // ============================================================
+        var wardsHL = new[]
         {
-            AreaCode = "CT",
-            AreaName = "Phường Cao Thắng",
-            AreaType = "Ward",
-            CentroidLatitude = 20.9550m,
-            CentroidLongitude = 106.9920m,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            ("THD", "Phường Trần Hưng Đạo",   20.9610m, 106.9952m),
+            ("CT",  "Phường Cao Thắng",        20.9550m, 106.9920m),
+            ("HT",  "Phường Hà Tuông",         20.9480m, 106.9600m),
+            ("HBC", "Phường Hồi Hải",          20.9510m, 106.9580m),
+            ("VD",  "Phường Vườn Đào",         20.9460m, 106.9400m),
         };
-        hongGai.SubAreas.Add(caoThang);
-        caoThang.ParentAreaId = hongGai.AreaId;
 
-        var haTuong = new Area
+        foreach (var (code, name, lat, lon) in wardsHL)
         {
-            AreaCode = "HT",
-            AreaName = "Phường Hà Tuông",
-            AreaType = "Ward",
-            CentroidLatitude = 20.9480m,
-            CentroidLongitude = 106.9600m,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        baiChay.SubAreas.Add(haTuong);
-        haTuong.ParentAreaId = baiChay.AreaId;
+            var ward = new Area
+            {
+                AreaCode = code,
+                AreaName = name,
+                AreaType = "Ward",
+                CentroidLatitude = lat,
+                CentroidLongitude = lon,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            haLong.SubAreas.Add(ward);
+            ward.ParentAreaId = haLong.AreaId;
+        }
 
-        var hoiBaiChay = new Area
+        // ============================================================
+        // Wards under Uông Bí
+        // ============================================================
+        var wardsUB = new[]
         {
-            AreaCode = "HBC",
-            AreaName = "Phường Hồi Hải Bãi Cháy",
-            AreaType = "Ward",
-            CentroidLatitude = 20.9510m,
-            CentroidLongitude = 106.9580m,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            ("VP",  "Phường Vất Tân",           21.0380m, 106.7650m),
+            ("YTH", "Phường Yết Thượng",       21.0420m, 106.7700m),
+            ("QL",  "Phường Quang Trung",       21.0330m, 106.7620m),
         };
-        baiChay.SubAreas.Add(hoiBaiChay);
-        hoiBaiChay.ParentAreaId = baiChay.AreaId;
 
-        var vuonDao = new Area
+        foreach (var (code, name, lat, lon) in wardsUB)
         {
-            AreaCode = "VD",
-            AreaName = "Phường Vườn Đào",
-            AreaType = "Ward",
-            CentroidLatitude = 20.4560m,
-            CentroidLongitude = 106.1380m,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        haLong.SubAreas.Add(vuonDao);
-        vuonDao.ParentAreaId = haLong.AreaId;
+            var ward = new Area
+            {
+                AreaCode = code,
+                AreaName = name,
+                AreaType = "Ward",
+                CentroidLatitude = lat,
+                CentroidLongitude = lon,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            uongBi.SubAreas.Add(ward);
+            ward.ParentAreaId = uongBi.AreaId;
+        }
 
-        var bachDam = new Area
+        // ============================================================
+        // Wards under Cẩm Phả
+        // ============================================================
+        var wardsCP = new[]
         {
-            AreaCode = "BD",
-            AreaName = "Phường Bãi Chály Đầm Hà",
-            AreaType = "Ward",
-            CentroidLatitude = 20.4630m,
-            CentroidLongitude = 106.1350m,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            ("CMT", "Phường Cẩm Mỹ Trung",    21.0180m, 107.0520m),
+            ("CQ",  "Phường Cẩm Quý",         21.0250m, 107.0440m),
+            ("CD",  "Phường Cẩm Đông",         21.0120m, 107.0550m),
         };
-        haLong.SubAreas.Add(bachDam);
-        bachDam.ParentAreaId = haLong.AreaId;
+
+        foreach (var (code, name, lat, lon) in wardsCP)
+        {
+            var ward = new Area
+            {
+                AreaCode = code,
+                AreaName = name,
+                AreaType = "Ward",
+                CentroidLatitude = lat,
+                CentroidLongitude = lon,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            camPha.SubAreas.Add(ward);
+            ward.ParentAreaId = camPha.AreaId;
+        }
+
+        // ============================================================
+        // Wards under Móng Cái
+        // ============================================================
+        var wardsMC = new[]
+        {
+            ("KH",  "Phường Ka Long",           21.5280m, 107.9220m),
+            ("NMC", "Phường Ninh Mỹ",           21.5200m, 107.9300m),
+            ("TM",  "Phường Trà Cổ",           21.5100m, 107.9350m),
+        };
+
+        foreach (var (code, name, lat, lon) in wardsMC)
+        {
+            var ward = new Area
+            {
+                AreaCode = code,
+                AreaName = name,
+                AreaType = "Ward",
+                CentroidLatitude = lat,
+                CentroidLongitude = lon,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            mongCai.SubAreas.Add(ward);
+            ward.ParentAreaId = mongCai.AreaId;
+        }
 
         _db.Areas.Add(quangNinh);
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("Seeded {Count} areas.", _db.Areas.Count());
+        _logger.LogInformation("Seeded {Count} areas (1 province, 4 districts, 14 wards).", _db.Areas.Count());
     }
 }

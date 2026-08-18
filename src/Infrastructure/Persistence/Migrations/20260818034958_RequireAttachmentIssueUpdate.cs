@@ -58,7 +58,7 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                 column: "UpdateId",
                 principalTable: "IssueUpdates",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+                onDelete: ReferentialAction.NoAction);
         }
 
         /// <inheritdoc />

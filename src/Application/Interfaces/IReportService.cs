@@ -13,5 +13,4 @@ public interface IReportService
     Task<ApiResponse<IReadOnlyList<ReportUpdateResponse>>> GetMyRecentUpdatesAsync(string reporterId, int limit, CancellationToken cancellationToken = default);
     Task<ApiResponse<IReadOnlyList<NearbyIssueResponse>>> FindNearbyAsync(FindNearbyIssuesRequest request, string? currentUserId, CancellationToken cancellationToken = default);
     Task<ApiResponse<IReadOnlyList<IssueTimelineItemResponse>>> GetTimelineAsync(long reportId, CancellationToken cancellationToken = default);
-    Task<long?> GetPrimaryIssueIdAsync(long reportId, CancellationToken cancellationToken = default);
 }

@@ -25,7 +25,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<DepartmentMember> DepartmentMembers => Set<DepartmentMember>();
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
     public DbSet<RoutingRule> RoutingRules => Set<RoutingRule>();
-    public DbSet<IssueUpvote> IssueUpvotes => Set<IssueUpvote>();
     public DbSet<Issue> Issues => Set<Issue>();
     public DbSet<IssueAttachment> IssueAttachments => Set<IssueAttachment>();
     public DbSet<IssueUpdate> IssueUpdates => Set<IssueUpdate>();
@@ -37,7 +36,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<ReportIssueType> ReportIssueTypes => Set<ReportIssueType>();
     public DbSet<ReportUpvote> ReportUpvotes => Set<ReportUpvote>();
+    public DbSet<IssueUpvote> IssueUpvotes => Set<IssueUpvote>();
+    public DbSet<ReRouteRequest> ReRouteRequests => Set<ReRouteRequest>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -224,46 +226,28 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .WithMany()
                   .HasForeignKey(x => x.AreaId)
                   .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<ApplicationUser>()
-                  .WithMany()
-                  .HasForeignKey(x => x.ReporterId)
-                  .OnDelete(DeleteBehavior.Restrict);
         });
 
-        builder.Entity<ReportUpvote>(entity =>
+        // 10b. ReportIssueTypes (junction N-N)
+        builder.Entity<ReportIssueType>(entity =>
         {
-            entity.ToTable("ReportUpvotes");
-            entity.HasKey(x => new { x.ReportId, x.UserId });
-            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.ToTable("ReportIssueTypes");
+            entity.HasKey(x => new { x.ReportId, x.IssueTypeId });
+            entity.Property(x => x.IssueTypeName).IsRequired().HasMaxLength(150).IsUnicode(true);
+            entity.Property(x => x.IssueTypeCode).IsRequired().HasMaxLength(30);
             entity.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
-            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.ReportId);
             entity.HasOne(x => x.Report)
-                  .WithMany(x => x.Upvotes)
+                  .WithMany(r => r.ReportIssueTypes)
                   .HasForeignKey(x => x.ReportId)
                   .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<ApplicationUser>()
+            entity.HasOne(x => x.IssueType)
                   .WithMany()
-                  .HasForeignKey(x => x.UserId)
+                  .HasForeignKey(x => x.IssueTypeId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // 11. IssueUpvotes (legacy, giữ tạm trong giai đoạn chuyển frontend sang ReportUpvotes)
-        builder.Entity<IssueUpvote>(entity =>
-        {
-            entity.ToTable("IssueUpvotes");
-            entity.HasKey(u => new { u.IssueId, u.UserId });
-
-            entity.Property(u => u.CreatedAt).HasColumnType("datetime2(0)");
-
-            entity.HasOne(u => u.Issue)
-                  .WithMany(i => i.Upvotes)
-                  .HasForeignKey(u => u.IssueId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasIndex(u => u.UserId).HasDatabaseName("IX_IssueUpvotes_UserId");
-        });
-
-        // 12. Issues
+        // 11. Issues
         builder.Entity<Issue>(entity =>
         {
             entity.ToTable("Issues");
@@ -342,7 +326,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
             entity.HasOne(a => a.Update)
                   .WithMany(u => u.Attachments)
                   .HasForeignKey(a => a.UpdateId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                  .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne<ApplicationUser>()
                   .WithMany()
@@ -591,6 +575,74 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(x => x.OccurredAt).HasDatabaseName("IX_AuditLogs_OccurredAt");
+        });
+
+        // 21. ReRouteRequests
+        builder.Entity<ReRouteRequest>(entity =>
+        {
+            entity.ToTable("ReRouteRequests");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedOnAdd();
+
+            entity.Property(x => x.Note).HasMaxLength(1000);
+            entity.Property(x => x.Status)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20)
+                  .IsUnicode(false);
+            entity.Property(x => x.RequestedBy).IsRequired().HasMaxLength(450);
+            entity.Property(x => x.RequestedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.ProcessedAt).HasColumnType("datetime2(0)");
+            entity.Property(x => x.ProcessedBy).HasMaxLength(450);
+
+            entity.HasIndex(x => new { x.IssueId, x.Status })
+                  .HasDatabaseName("IX_ReRouteRequests_IssueId_Status");
+
+            entity.HasOne(x => x.Issue)
+                  .WithMany()
+                  .HasForeignKey(x => x.IssueId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired();
+
+            entity.HasOne(x => x.CurrentDepartment)
+                  .WithMany()
+                  .HasForeignKey(x => x.CurrentDepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired();
+
+            entity.HasOne(x => x.TargetDepartment)
+                  .WithMany()
+                  .HasForeignKey(x => x.TargetDepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict)
+                  .IsRequired();
+        });
+
+        // 22. IssueUpvotes
+        builder.Entity<IssueUpvote>(entity =>
+        {
+            entity.ToTable("IssueUpvotes");
+            entity.HasKey(x => new { x.IssueId, x.UserId });
+            entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne(x => x.Issue)
+                  .WithMany()
+                  .HasForeignKey(x => x.IssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // 23. ReportUpvotes (legacy - kept for migration compatibility)
+        builder.Entity<ReportUpvote>(entity =>
+        {
+            entity.ToTable("ReportUpvotes");
+            entity.HasKey(x => new { x.ReportId, x.UserId });
+            entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne(x => x.Report)
+                  .WithMany()
+                  .HasForeignKey(x => x.ReportId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

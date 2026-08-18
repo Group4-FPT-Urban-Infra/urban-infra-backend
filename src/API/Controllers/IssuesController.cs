@@ -21,23 +21,113 @@ namespace UrbanInfraSystem.API.Controllers;
 public class IssuesController : ControllerBase
 {
     private readonly IIssueService _issueService;
-    private readonly IIssueUpvoteService _upvoteService;
     private readonly ICurrentUserService _currentUser;
     private readonly IIssueAssignmentService _assignmentService;
     private readonly IIssueAssignmentMemberService _memberService;
+    private readonly IIssueUpvoteService _upvoteService;
 
     public IssuesController(
         IIssueService issueService,
-        IIssueUpvoteService upvoteService,
         ICurrentUserService currentUser,
         IIssueAssignmentService assignmentService,
-        IIssueAssignmentMemberService memberService)
+        IIssueAssignmentMemberService memberService,
+        IIssueUpvoteService upvoteService)
     {
         _issueService = issueService;
-        _upvoteService = upvoteService;
         _currentUser = currentUser;
         _assignmentService = assignmentService;
         _memberService = memberService;
+        _upvoteService = upvoteService;
+    }
+
+    /// <summary>Toggle upvote cho một báo cáo sự cố (thêm nếu chưa upvote, bỏ nếu đã upvote).</summary>
+    [HttpPost("{issueId:long}/upvote")]
+    [Authorize(Roles = Roles.Citizen)]
+    [ProducesResponseType(typeof(ApiResponse<UpvoteResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> ToggleUpvote(
+        [FromRoute] long issueId,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new ApiResponse<UpvoteResponse>
+            {
+                Success = false,
+                Message = "Vui lòng đăng nhập để thực hiện thao tác này."
+            });
+        }
+
+        // Verify issue exists
+        var issue = await _issueService.GetIssueByIdAsync(issueId, userId, cancellationToken);
+        if (!issue.Success)
+        {
+            return NotFound(new ApiResponse<UpvoteResponse>
+            {
+                Success = false,
+                Message = $"Không tìm thấy sự cố có ID = {issueId}."
+            });
+        }
+
+        var hasUpvoted = await _upvoteService.ToggleAsync(issueId, userId, cancellationToken);
+
+        return Ok(new ApiResponse<UpvoteResponse>
+        {
+            Success = true,
+            Data = new UpvoteResponse
+            {
+                IssueId = issueId,
+                HasUpvoted = hasUpvoted,
+                UpvoteCount = issue.Data!.UpvoteCount + (hasUpvoted ? 1 : 0)
+            }
+        });
+    }
+
+    /// <summary>Xóa upvote khỏi một báo cáo sự cố.</summary>
+    [HttpDelete("{issueId:long}/upvote")]
+    [Authorize(Roles = Roles.Citizen)]
+    [ProducesResponseType(typeof(ApiResponse<UpvoteResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> RemoveUpvote(
+        [FromRoute] long issueId,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new ApiResponse<UpvoteResponse>
+            {
+                Success = false,
+                Message = "Vui lòng đăng nhập để thực hiện thao tác này."
+            });
+        }
+
+        // Verify issue exists
+        var issue = await _issueService.GetIssueByIdAsync(issueId, userId, cancellationToken);
+        if (!issue.Success)
+        {
+            return NotFound(new ApiResponse<UpvoteResponse>
+            {
+                Success = false,
+                Message = $"Không tìm thấy sự cố có ID = {issueId}."
+            });
+        }
+
+        await _upvoteService.RemoveAsync(issueId, userId, cancellationToken);
+
+        return Ok(new ApiResponse<UpvoteResponse>
+        {
+            Success = true,
+            Data = new UpvoteResponse
+            {
+                IssueId = issueId,
+                HasUpvoted = false,
+                UpvoteCount = Math.Max(0, issue.Data!.UpvoteCount - 1)
+            }
+        });
     }
 
     /// <summary>Tạo báo cáo sự cố mới kèm hình ảnh.</summary>
@@ -136,95 +226,6 @@ public class IssuesController : ControllerBase
         if (!result.Success)
         {
             return NotFound(result);
-        }
-
-        return Ok(result);
-    }
-
-    /// <summary>Upvote báo cáo; gọi lặp lại không tạo upvote thứ hai.</summary>
-    [HttpPost("{issueId:long}/upvote")]
-    [Authorize(Roles = Roles.Citizen)]
-    [ProducesResponseType(typeof(ApiResponse<UpvoteResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> Upvote([FromRoute] long issueId)
-    {
-        var userId = _currentUser.UserId;
-        if (string.IsNullOrEmpty(userId))
-        {
-            return Unauthorized(new ApiResponse<UpvoteResponse>
-            {
-                Success = false,
-                Message = "Vui lòng đăng nhập để thực hiện thao tác này."
-            });
-        }
-
-        var result = await _upvoteService.UpvoteAsync(issueId, userId);
-
-        if (!result.Success)
-        {
-            return NotFound(new ProblemDetails
-            {
-                Status = StatusCodes.Status404NotFound,
-                Title = "Không tìm thấy sự cố",
-                Detail = result.Message
-            });
-        }
-
-        return Ok(result);
-    }
-
-    /// <summary>Lấy trạng thái upvote của một báo cáo (số upvote và user đã upvote chưa).</summary>
-    [HttpGet("{issueId:long}/upvote")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(ApiResponse<UpvoteResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> GetUpvoteStatus([FromRoute] long issueId)
-    {
-        var userId = _currentUser.UserId;
-        var result = await _upvoteService.GetUpvoteStatusAsync(issueId, userId);
-
-        if (!result.Success)
-        {
-            return NotFound(new ProblemDetails
-            {
-                Status = StatusCodes.Status404NotFound,
-                Title = "Không tìm thấy sự cố",
-                Detail = result.Message
-            });
-        }
-
-        return Ok(result);
-    }
-
-    /// <summary>Bỏ upvote báo cáo; gọi lặp lại vẫn trả trạng thái hiện tại.</summary>
-    [HttpDelete("{issueId:long}/upvote")]
-    [Authorize(Roles = Roles.Citizen)]
-    [ProducesResponseType(typeof(ApiResponse<UpvoteResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> RemoveUpvote([FromRoute] long issueId)
-    {
-        var userId = _currentUser.UserId;
-        if (string.IsNullOrEmpty(userId))
-        {
-            return Unauthorized(new ApiResponse<UpvoteResponse>
-            {
-                Success = false,
-                Message = "Vui lòng đăng nhập để thực hiện thao tác này."
-            });
-        }
-
-        var result = await _upvoteService.RemoveUpvoteAsync(issueId, userId);
-
-        if (!result.Success)
-        {
-            return NotFound(new ProblemDetails
-            {
-                Status = StatusCodes.Status404NotFound,
-                Title = "Không tìm thấy sự cố",
-                Detail = result.Message
-            });
         }
 
         return Ok(result);

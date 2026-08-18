@@ -84,9 +84,9 @@ public static class DependencyInjection
         services.AddScoped<ISlaPolicyService, SlaPolicyService>();
 
         services.AddScoped<IUserManagementService, UserManagementService>();
-        services.AddScoped<IIssueUpvoteService, IssueUpvoteService>();
         services.AddScoped<IIssueService, IssueService>();
         services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<IIssueUpvoteService, IssueUpvoteService>();
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
         services.AddScoped<IIssueAssignmentService, IssueAssignmentService>();
 

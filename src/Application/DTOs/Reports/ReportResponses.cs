@@ -11,8 +11,6 @@ public class ReportSummaryResponse
     public decimal Latitude { get; set; }
     public decimal Longitude { get; set; }
     public string? ThumbnailUrl { get; set; }
-    public int UpvoteCount { get; set; }
-    public bool HasUpvoted { get; set; }
     public DateTime ReportedAt { get; set; }
     public int IssueCount { get; set; }
     public IReadOnlyList<LookupItemResponse> IssueTypes { get; set; } = [];

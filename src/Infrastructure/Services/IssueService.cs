@@ -508,13 +508,25 @@ public class IssueService : IIssueService
             AddressText = request.AddressText?.Trim(),
             Latitude = request.Latitude,
             Longitude = request.Longitude,
-            UpvoteCount = 0,
             IsPublic = true,
             ReportedAt = reportedAt,
             CreatedAt = reportedAt
         };
         _context.Reports.Add(report);
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Tạo liên kết Report - IssueType
+        foreach (var issueType in issueTypes)
+        {
+            _context.ReportIssueTypes.Add(new ReportIssueType
+            {
+                ReportId = report.ReportId,
+                IssueTypeId = issueType.IssueTypeId,
+                IssueTypeName = issueType.TypeName,
+                IssueTypeCode = issueType.TypeCode,
+                CreatedAt = reportedAt
+            });
+        }
 
         var issues = issueTypeIds.Select((typeId, index) => new Issue
         {
@@ -708,8 +720,8 @@ public class IssueService : IIssueService
         bool hasUpvoted = false;
         if (!string.IsNullOrEmpty(currentUserId))
         {
-            hasUpvoted = await _context.ReportUpvotes
-                .AnyAsync(u => u.ReportId == issue.ReportId && u.UserId == currentUserId, cancellationToken);
+            hasUpvoted = await _context.IssueUpvotes
+                .AnyAsync(u => u.IssueId == issue.IssueId && u.UserId == currentUserId, cancellationToken);
         }
 
         var response = MapToDetailResponse(issue, reporter?.FullName ?? "Công dân", hasUpvoted);
@@ -810,18 +822,18 @@ public class IssueService : IIssueService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        HashSet<long> upvotedReportIds = [];
+        HashSet<long> upvotedIssueIds = [];
         if (!string.IsNullOrEmpty(currentUserId) && issues.Count > 0)
         {
-            var reportIds = issues.Select(i => i.ReportId).Distinct().ToList();
-            var upvotes = await _context.ReportUpvotes
-                .Where(u => u.UserId == currentUserId && reportIds.Contains(u.ReportId))
-                .Select(u => u.ReportId)
+            var issueIds = issues.Select(i => i.IssueId).ToList();
+            var upvotes = await _context.IssueUpvotes
+                .Where(u => u.UserId == currentUserId && issueIds.Contains(u.IssueId))
+                .Select(u => u.IssueId)
                 .ToListAsync(cancellationToken);
-            upvotedReportIds = [.. upvotes];
+            upvotedIssueIds = [.. upvotes];
         }
 
-        var items = issues.Select(i => MapToSummaryResponse(i, upvotedReportIds.Contains(i.ReportId))).ToList();
+        var items = issues.Select(i => MapToSummaryResponse(i, upvotedIssueIds.Contains(i.IssueId))).ToList();
 
         return new ApiResponse<PagedResponse<IssueSummaryResponse>>
         {
@@ -868,18 +880,18 @@ public class IssueService : IIssueService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        HashSet<long> upvotedReportIds = [];
+        HashSet<long> upvotedIssueIds = [];
         if (issues.Count > 0)
         {
-            var reportIds = issues.Select(i => i.ReportId).Distinct().ToList();
-            var upvotes = await _context.ReportUpvotes
-                .Where(u => u.UserId == reporterId && reportIds.Contains(u.ReportId))
-                .Select(u => u.ReportId)
+            var issueIds = issues.Select(i => i.IssueId).ToList();
+            var upvotes = await _context.IssueUpvotes
+                .Where(u => u.UserId == reporterId && issueIds.Contains(u.IssueId))
+                .Select(u => u.IssueId)
                 .ToListAsync(cancellationToken);
-            upvotedReportIds = [.. upvotes];
+            upvotedIssueIds = [.. upvotes];
         }
 
-        var items = issues.Select(i => MapToSummaryResponse(i, upvotedReportIds.Contains(i.ReportId))).ToList();
+        var items = issues.Select(i => MapToSummaryResponse(i, upvotedIssueIds.Contains(i.IssueId))).ToList();
 
         return new ApiResponse<PagedResponse<IssueSummaryResponse>>
         {
@@ -971,8 +983,8 @@ public class IssueService : IIssueService
                 bool hasUpvoted = false;
                 if (!string.IsNullOrEmpty(currentUserId))
                 {
-                    hasUpvoted = await _context.ReportUpvotes
-                        .AnyAsync(u => u.ReportId == issue.ReportId && u.UserId == currentUserId, cancellationToken);
+                    hasUpvoted = await _context.IssueUpvotes
+                        .AnyAsync(u => u.IssueId == issue.IssueId && u.UserId == currentUserId, cancellationToken);
                 }
 
                 var summary = MapToSummaryResponse(issue, hasUpvoted);

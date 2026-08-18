@@ -150,14 +150,53 @@ public class SeedUsers
 
         foreach (var dept in departments)
         {
-            // Create manager
-            var managerEmail = $"{dept.DepartmentCode.ToLower()}.manager@urbaninfra.vn";
-            if (!_db.Users.Any(u => u.Email == managerEmail))
+            // Skip the root department (Sở Xây dựng) - it has no field staff
+            if (dept.DepartmentCode == "SXD")
+            {
+                // Create admin-level manager for root department
+                var managerEmail = "sxd.manager@urbaninfra.vn";
+                if (!_db.Users.Any(u => u.Email == managerEmail))
+                {
+                    var manager = new ApplicationUser
+                    {
+                        UserName = managerEmail,
+                        Email = managerEmail,
+                        FullName = $"Giám đốc Sở Xây dựng tỉnh Quảng Ninh",
+                        EmailConfirmed = true,
+                        IsActive = true,
+                        CreatedAtUtc = DateTime.UtcNow
+                    };
+
+                    var result = await _userManager.CreateAsync(manager, password);
+                    if (result.Succeeded)
+                    {
+                        await _userManager.AddToRoleAsync(manager, "DepartmentManager");
+
+                        _db.DepartmentMembers.Add(new DepartmentMember
+                        {
+                            DepartmentId = dept.DepartmentId,
+                            UserId = manager.Id,
+                            JobTitle = $"Giám đốc {dept.DepartmentName}",
+                            IsManager = true,
+                            JoinedAt = DateTime.UtcNow,
+                            IsActive = true
+                        });
+                        await _db.SaveChangesAsync();
+                        managerCreated++;
+                        _logger.LogInformation("Created root manager: {Email}", managerEmail);
+                    }
+                }
+                continue;
+            }
+
+            // Create manager for each child department
+            var managerEmail2 = $"{dept.DepartmentCode.ToLower()}.manager@urbaninfra.vn";
+            if (!_db.Users.Any(u => u.Email == managerEmail2))
             {
                 var manager = new ApplicationUser
                 {
-                    UserName = managerEmail,
-                    Email = managerEmail,
+                    UserName = managerEmail2,
+                    Email = managerEmail2,
                     FullName = $"Trưởng phòng {dept.DepartmentName}",
                     EmailConfirmed = true,
                     IsActive = true,
@@ -169,7 +208,6 @@ public class SeedUsers
                 {
                     await _userManager.AddToRoleAsync(manager, "DepartmentManager");
 
-                    // Add as department member with IsManager = true
                     _db.DepartmentMembers.Add(new DepartmentMember
                     {
                         DepartmentId = dept.DepartmentId,
@@ -181,12 +219,7 @@ public class SeedUsers
                     });
                     await _db.SaveChangesAsync();
                     managerCreated++;
-                    _logger.LogInformation("Created manager: {Email} for dept {Dept}", managerEmail, dept.DepartmentCode);
-                }
-                else
-                {
-                    _logger.LogWarning("Failed to create manager {Email}: {Errors}",
-                        managerEmail, string.Join(", ", result.Errors.Select(e => e.Description)));
+                    _logger.LogInformation("Created manager: {Email} for dept {Dept}", managerEmail2, dept.DepartmentCode);
                 }
             }
 
@@ -220,7 +253,6 @@ public class SeedUsers
 
                 await _userManager.AddToRoleAsync(staff, "DepartmentStaff");
 
-                // Add as department member with IsManager = false
                 _db.DepartmentMembers.Add(new DepartmentMember
                 {
                     DepartmentId = dept.DepartmentId,

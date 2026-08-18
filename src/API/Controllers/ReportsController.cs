@@ -16,16 +16,11 @@ namespace UrbanInfraSystem.API.Controllers;
 public class ReportsController : ControllerBase
 {
     private readonly IReportService _reports;
-    private readonly IIssueUpvoteService _upvotes;
     private readonly ICurrentUserService _currentUser;
 
-    public ReportsController(
-        IReportService reports,
-        IIssueUpvoteService upvotes,
-        ICurrentUserService currentUser)
+    public ReportsController(IReportService reports, ICurrentUserService currentUser)
     {
         _reports = reports;
-        _upvotes = upvotes;
         _currentUser = currentUser;
     }
 
@@ -105,37 +100,5 @@ public class ReportsController : ControllerBase
     {
         var result = await _reports.GetTimelineAsync(reportId, cancellationToken);
         return result.Success ? Ok(result) : NotFound(result);
-    }
-
-    /// <summary>Lấy số lượt ủng hộ và trạng thái ủng hộ của người dùng hiện tại.</summary>
-    [HttpGet("{reportId:long}/upvote")]
-    [AllowAnonymous]
-    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> UpvoteStatus(long reportId, CancellationToken cancellationToken)
-    {
-        var issueId = await _reports.GetPrimaryIssueIdAsync(reportId, cancellationToken);
-        if (!issueId.HasValue) return NotFound();
-        return Ok(await _upvotes.GetUpvoteStatusAsync(issueId.Value, _currentUser.UserId));
-    }
-
-    /// <summary>Ủng hộ Report; một công dân chỉ có một lượt.</summary>
-    [HttpPost("{reportId:long}/upvote")]
-    [Authorize(Roles = Roles.Citizen)]
-    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> Upvote(long reportId, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(_currentUser.UserId)) return Unauthorized();
-        var issueId = await _reports.GetPrimaryIssueIdAsync(reportId, cancellationToken);
-        if (!issueId.HasValue) return NotFound();
-        return Ok(await _upvotes.UpvoteAsync(issueId.Value, _currentUser.UserId));
-    }
-
-    /// <summary>Bỏ lượt ủng hộ Report.</summary>
-    [HttpDelete("{reportId:long}/upvote")]
-    [Authorize(Roles = Roles.Citizen)]
-    public async Task<ActionResult<ApiResponse<UpvoteResponse>>> RemoveUpvote(long reportId, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(_currentUser.UserId)) return Unauthorized();
-        var issueId = await _reports.GetPrimaryIssueIdAsync(reportId, cancellationToken);
-        if (!issueId.HasValue) return NotFound();
-        return Ok(await _upvotes.RemoveUpvoteAsync(issueId.Value, _currentUser.UserId));
     }
 }
