@@ -89,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<IIssueUpvoteService, IssueUpvoteService>();
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
         services.AddScoped<IIssueAssignmentService, IssueAssignmentService>();
+        services.AddScoped<IReRouteRequestService, ReRouteRequestService>();
 
         services.AddScoped<IStaffService, StaffService>();
 
