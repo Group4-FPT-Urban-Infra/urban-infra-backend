@@ -44,4 +44,6 @@ public class DepartmentManagerIssueSummary
     public string? ThumbnailUrl { get; set; }
     public decimal Latitude { get; set; }
     public decimal Longitude { get; set; }
+    public string IssueStatus { get; set; } = default!;
+    public int AssignedMemberCount { get; set; }
 }

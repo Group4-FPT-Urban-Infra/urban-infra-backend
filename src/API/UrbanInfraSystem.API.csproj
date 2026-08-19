@@ -8,6 +8,7 @@
     <UserSecretsId>e4f0b7d4-2b19-4a4b-9e8e-urbaninfra-api</UserSecretsId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <HotReloadEnabled>false</HotReloadEnabled>
   </PropertyGroup>
 
   <ItemGroup>

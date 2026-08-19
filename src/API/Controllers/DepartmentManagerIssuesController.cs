@@ -35,16 +35,16 @@ public class DepartmentManagerIssuesController : ControllerBase
     }
 
     [HttpPost("filter")]
-    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DepartmentManagerIssueSummary>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<IReadOnlyList<DepartmentManagerIssueSummary>>>> GetIssues(
+    [ProducesResponseType(typeof(ApiResponse<PaginatedResponse<DepartmentManagerIssueSummary>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<DepartmentManagerIssueSummary>>>> GetIssues(
         [FromBody] DepartmentManagerIssueListRequest request,
         CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<IReadOnlyList<DepartmentManagerIssueSummary>> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Unauthorized(new ApiResponse<PaginatedResponse<DepartmentManagerIssueSummary>> { Success = false, Message = "Khong co thong tin don vi." });
 
         var result = await _issueService.GetIssuesAsync(deptId, request, cancellationToken);
-        return Ok(new ApiResponse<IReadOnlyList<DepartmentManagerIssueSummary>> { Success = true, Data = result });
+        return Ok(new ApiResponse<PaginatedResponse<DepartmentManagerIssueSummary>> { Success = true, Data = result });
     }
 
     [HttpGet("{issueId:long}")]

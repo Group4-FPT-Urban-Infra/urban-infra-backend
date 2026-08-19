@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
 using UrbanInfraSystem.Application.DTOs;
 using UrbanInfraSystem.Application.DTOs.Issues;
 using UrbanInfraSystem.Application.DTOs.Staff;
@@ -17,10 +20,12 @@ namespace UrbanInfraSystem.Infrastructure.Services;
 public class StaffService : IStaffService
 {
     private readonly AppDbContext _context;
+    private readonly IWebHostEnvironment _environment;
 
-    public StaffService(AppDbContext context)
+    public StaffService(AppDbContext context, IWebHostEnvironment environment)
     {
         _context = context;
+        _environment = environment;
     }
 
     public async Task<StaffDashboardSummaryResponse> GetDashboardSummaryAsync(string staffUserId, CancellationToken cancellationToken)
@@ -205,29 +210,43 @@ public class StaffService : IStaffService
         }
         var departmentId = memberInfo.DepartmentId;
 
-        // 2. Base query với LEFT JOIN để lấy thông tin phân công hiện tại
+        // 2. Base query với LEFT JOIN để lấy thông tin phân công hiện tại và thành viên được giao
         var query = from issue in _context.Issues
             .Include(i => i.Status)
             .Include(i => i.Priority)
             .Include(i => i.IssueType)
             .Include(i => i.Area)
             .Include(i => i.Sla)
-            join assignment in _context.IssueAssignments.Include(a => a.Department).Where(a => a.IsCurrent)
+            join assignment in _context.IssueAssignments
+                .Include(a => a.Department)
+                .Include(a => a.Members)
+                .Where(a => a.IsCurrent)
                 on issue.IssueId equals assignment.IssueId into gj
             from currentAssignment in gj.DefaultIfEmpty()
             select new { issue, currentAssignment };
 
-        // 3. Áp dụng phạm vi bảo mật: Cán bộ chỉ thấy sự cố của đơn vị mình và các sự cố chưa được phân công.
+        // 3. Áp dụng phạm vi bảo mật ban đầu
+        // Base query: chỉ thấy sự cố của đơn vị mình hoặc chưa được phân công
         query = query.Where(x => x.currentAssignment == null || x.currentAssignment.DepartmentId == departmentId);
 
         // 4. Áp dụng các bộ lọc từ request
-        switch (filters.Assignment?.ToLowerInvariant())
+        var scope = filters.Scope?.ToLowerInvariant() ?? "department";
+        switch (scope)
         {
-            case "mine":
-                query = query.Where(x => x.currentAssignment != null && x.currentAssignment.DepartmentId == departmentId);
+            case "my":
+                // Chỉ hiển thị issue đã được phân công cho staff hiện tại
+                query = query.Where(x =>
+                    x.currentAssignment != null &&
+                    x.currentAssignment.DepartmentId == departmentId &&
+                    x.currentAssignment.Members.Any(m => m.UserId == staffUserId));
                 break;
-            case "unassigned":
-                query = query.Where(x => x.currentAssignment == null);
+            case "all":
+                // Hiển thị tất cả issue (trừ rejected)
+                query = query.Where(x => x.issue.Status.StatusCode != "REJECTED");
+                break;
+            case "department":
+            default:
+                // Giữ nguyên filter bảo mật ban đầu
                 break;
         }
 
@@ -276,6 +295,9 @@ public class StaffService : IStaffService
             Area = new LookupItemResponse { Id = x.issue.Area.AreaId, Code = x.issue.Area.AreaCode, Name = x.issue.Area.AreaName },
             ReportedAt = x.issue.ReportedAt,
             AssignedDepartment = x.currentAssignment != null ? new LookupItemResponse { Id = x.currentAssignment.Department.DepartmentId, Code = x.currentAssignment.Department.DepartmentCode, Name = x.currentAssignment.Department.DepartmentName } : null,
+            AssignmentStatus = x.currentAssignment != null && x.currentAssignment.Members.Any(m => m.UserId == staffUserId)
+                ? x.currentAssignment.Members.Where(m => m.UserId == staffUserId).Select(m => m.Status).FirstOrDefault()
+                : null,
             IsSlaBreached = x.issue.Sla != null && x.issue.Sla.IsResolutionBreached
         }).ToListAsync(cancellationToken);
 
@@ -285,7 +307,7 @@ public class StaffService : IStaffService
         };
     }
 
-    public async Task<List<StaffMapIssueResponse>> GetMapIssuesAsync(string staffUserId, StaffIncidentFilterRequest filters, CancellationToken cancellationToken)
+    public async Task<List<StaffMapIssueResponse>> GetMapIssuesAsync(string staffUserId, StaffMapFilterRequest filters, CancellationToken cancellationToken)
     {
         // 1. Lấy thông tin đơn vị của cán bộ
         var memberInfo = await _context.DepartmentMembers
@@ -310,20 +332,27 @@ public class StaffService : IStaffService
             from currentAssignment in gj.DefaultIfEmpty()
             select new { issue, currentAssignment };
 
-        // 3. Áp dụng phạm vi bảo mật: Cán bộ chỉ thấy sự cố của đơn vị mình và các sự cố chưa được phân công.
-        query = query.Where(x => x.currentAssignment == null || x.currentAssignment.DepartmentId == departmentId);
-
-        // 4. Áp dụng các bộ lọc từ request
-        switch (filters.Assignment?.ToLowerInvariant())
+        // 3. Áp dụng phạm vi lọc dựa trên Scope
+        var scope = filters.Scope?.ToLowerInvariant() ?? "department";
+        switch (scope)
         {
-            case "mine":
+            case "my":
+                // Chỉ hiển thị issue của đơn vị mình (giống department)
                 query = query.Where(x => x.currentAssignment != null && x.currentAssignment.DepartmentId == departmentId);
                 break;
-            case "unassigned":
-                query = query.Where(x => x.currentAssignment == null);
+            case "all":
+                // Hiển thị tất cả issue trong hệ thống (hoặc giới hạn bán kính)
+                // Không cần thêm filter, chỉ cần đảm bảo không thấy issue bị từ chối
+                query = query.Where(x => !x.issue.Status.IsClosed || x.issue.Status.StatusCode != "REJECTED");
+                break;
+            case "department":
+            default:
+                // Issue của đơn vị hoặc chưa được phân công
+                query = query.Where(x => x.currentAssignment == null || x.currentAssignment.DepartmentId == departmentId);
                 break;
         }
 
+        // 4. Áp dụng các bộ lọc từ request
         if (!string.IsNullOrWhiteSpace(filters.Keyword))
         {
             var keyword = filters.Keyword.Trim().ToLower();
@@ -345,9 +374,31 @@ public class StaffService : IStaffService
             query = query.Where(x => filters.IssueTypeIds.Contains(x.issue.IssueTypeId));
         }
 
-        // 5. Project sang DTO và thực thi query (không phân trang)
+        // 5. Filter theo bán kính nếu có
+        if (filters.RadiusMeters.HasValue && filters.Latitude.HasValue && filters.Longitude.HasValue)
+        {
+            var centerLat = filters.Latitude.Value;
+            var centerLng = filters.Longitude.Value;
+            var radiusMeters = filters.RadiusMeters.Value;
+
+            // Sử dụng Haversine formula approximation để lọc
+            // 1 độ latitude ≈ 111km, 1 độ longitude ≈ 111km * cos(latitude)
+            var latDegrees = radiusMeters / 111000.0;
+            var lngDegrees = radiusMeters / (111000.0 * Math.Cos(centerLat * Math.PI / 180.0));
+
+            query = query.Where(x =>
+                Math.Abs((double)x.issue.Latitude - centerLat) <= latDegrees &&
+                Math.Abs((double)x.issue.Longitude - centerLng) <= lngDegrees);
+        }
+
+        // 6. Chỉ lấy các issue có tọa độ
+        query = query.Where(x => x.issue.Latitude != 0 && x.issue.Longitude != 0);
+
+        // 7. Project sang DTO và thực thi query (không phân trang)
         var items = await query
-            .OrderByDescending(x => x.issue.ReportedAt) // Sắp xếp đơn giản cho map
+            .OrderByDescending(x => x.issue.Sla != null && x.issue.Sla.IsResolutionBreached)
+            .ThenBy(x => x.issue.Priority.SeverityRank)
+            .ThenByDescending(x => x.issue.ReportedAt)
             .Select(x => new StaffMapIssueResponse
             {
                 IssueId = x.issue.IssueId,
@@ -362,7 +413,33 @@ public class StaffService : IStaffService
                 IsSlaBreached = x.issue.Sla != null && x.issue.Sla.IsResolutionBreached
             }).ToListAsync(cancellationToken);
 
+        // 8. Nếu có bán kính, lọc chính xác hơn bằng Haversine (post-query filter)
+        if (filters.RadiusMeters.HasValue && filters.Latitude.HasValue && filters.Longitude.HasValue)
+        {
+            var centerLat = filters.Latitude.Value;
+            var centerLng = filters.Longitude.Value;
+            var radiusMeters = filters.RadiusMeters.Value;
+
+            items = items.Where(i =>
+            {
+                var distance = CalculateHaversineDistance(centerLat, centerLng, (double)i.Latitude, (double)i.Longitude);
+                return distance <= radiusMeters;
+            }).ToList();
+        }
+
         return items;
+    }
+
+    private static double CalculateHaversineDistance(double lat1, double lng1, double lat2, double lng2)
+    {
+        const double R = 6371000; // Bán kính trái đất tính bằng mét
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLng = (lng2 - lng1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c;
     }
 
     public async Task ClaimIncidentAsync(long issueId, string staffUserId, CancellationToken cancellationToken)
@@ -442,5 +519,307 @@ public class StaffService : IStaffService
 
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<StaffIncidentDetailResponse?> GetIncidentDetailAsync(long issueId, string staffUserId, CancellationToken cancellationToken)
+    {
+        // 1. Lấy thông tin đơn vị của cán bộ
+        var memberInfo = await _context.DepartmentMembers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.UserId == staffUserId && m.IsActive, cancellationToken);
+
+        if (memberInfo is null)
+        {
+            return null;
+        }
+        var departmentId = memberInfo.DepartmentId;
+
+        // 2. Lấy thông tin issue với các navigation properties
+        var issue = await _context.Issues
+            .Include(i => i.Report)
+            .Include(i => i.Status)
+            .Include(i => i.Priority)
+            .Include(i => i.IssueType)
+            .Include(i => i.Area)
+            .Include(i => i.Sla)
+            .Include(i => i.Assignments.Where(a => a.IsCurrent)).ThenInclude(a => a.Department)
+            .Include(i => i.Assignments.Where(a => a.IsCurrent)).ThenInclude(a => a.Members)
+            .Include(i => i.Updates.OrderByDescending(u => u.CreatedAt)).ThenInclude(u => u.FromStatus)
+            .Include(i => i.Updates.OrderByDescending(u => u.CreatedAt)).ThenInclude(u => u.ToStatus)
+            .Include(i => i.Updates.OrderByDescending(u => u.CreatedAt)).ThenInclude(u => u.Attachments)
+            .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken);
+
+        if (issue is null)
+        {
+            return null;
+        }
+
+        // 3. Kiểm tra quyền truy cập
+        var currentAssignment = issue.Assignments.FirstOrDefault();
+        if (currentAssignment != null && currentAssignment.DepartmentId != departmentId)
+        {
+            return null;
+        }
+
+        // 4. Lấy reporter info
+        var reporter = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == issue.ReporterId, cancellationToken);
+
+        // 5. Phân tách images: reporter vs staff
+        var allAttachments = issue.Updates
+            .SelectMany(u => u.Attachments.Select(a => new { Attachment = a, Update = u }))
+            .ToList();
+
+        var reporterImages = allAttachments
+            .Where(x => x.Update.CreatedBy == issue.ReporterId)
+            .Select(x => new IssueAttachmentResponse
+            {
+                Id = x.Attachment.Id,
+                Kind = x.Attachment.Kind,
+                FileUrl = x.Attachment.FileUrl,
+                ThumbnailUrl = x.Attachment.ThumbnailUrl,
+                MimeType = x.Attachment.MimeType,
+                FileSizeBytes = x.Attachment.FileSizeBytes,
+                WidthPx = x.Attachment.WidthPx,
+                HeightPx = x.Attachment.HeightPx,
+                CreatedAt = x.Attachment.CreatedAt
+            })
+            .ToList();
+
+        var staffImages = allAttachments
+            .Where(x => x.Update.CreatedBy != issue.ReporterId)
+            .Select(x => new IssueAttachmentResponse
+            {
+                Id = x.Attachment.Id,
+                Kind = x.Attachment.Kind,
+                FileUrl = x.Attachment.FileUrl,
+                ThumbnailUrl = x.Attachment.ThumbnailUrl,
+                MimeType = x.Attachment.MimeType,
+                FileSizeBytes = x.Attachment.FileSizeBytes,
+                WidthPx = x.Attachment.WidthPx,
+                HeightPx = x.Attachment.HeightPx,
+                CreatedAt = x.Attachment.CreatedAt
+            })
+            .ToList();
+
+        // 6. Build timeline
+        var timeline = issue.Updates
+            .OrderByDescending(u => u.CreatedAt)
+            .Select(u => new IssueTimelineItemResponse
+            {
+                Id = u.Id,
+                UpdateType = u.FromStatusId == null ? "CREATED" : (u.FromStatusId != u.ToStatusId ? "STATUS_CHANGE" : "COMMENT"),
+                FromStatus = u.FromStatus != null ? new LookupItemResponse { Id = u.FromStatus.StatusId, Code = u.FromStatus.StatusCode, Name = u.FromStatus.StatusName } : null,
+                ToStatus = u.ToStatus != null ? new LookupItemResponse { Id = u.ToStatus.StatusId, Code = u.ToStatus.StatusCode, Name = u.ToStatus.StatusName } : null,
+                Note = u.Note,
+                IsSystemGenerated = u.IsSystemGenerated,
+                CreatedAt = u.CreatedAt,
+                Attachments = u.Attachments.Select(a => new IssueAttachmentResponse
+                {
+                    Id = a.Id,
+                    Kind = a.Kind,
+                    FileUrl = a.FileUrl,
+                    ThumbnailUrl = a.ThumbnailUrl,
+                    MimeType = a.MimeType,
+                    FileSizeBytes = a.FileSizeBytes,
+                    WidthPx = a.WidthPx,
+                    HeightPx = a.HeightPx,
+                    CreatedAt = a.CreatedAt
+                }).ToList()
+            })
+            .ToList();
+
+            // 7. Build current member info
+            var staffMember = currentAssignment?.Members.FirstOrDefault(m => m.UserId == staffUserId);
+            CurrentMemberInfo? currentMemberInfo = null;
+            if (staffMember != null)
+            {
+                currentMemberInfo = new CurrentMemberInfo
+                {
+                    MemberId = staffMember.MemberId,
+                    Status = staffMember.Status
+                };
+            }
+
+            // 8. Build assignment info
+            AssignmentInfoResponse? assignmentInfo = null;
+            if (currentAssignment != null)
+            {
+                var assigneeName = staffMember != null
+                    ? await _context.Users.Where(u => u.Id == staffMember.UserId).Select(u => u.FullName).FirstOrDefaultAsync(cancellationToken)
+                    : null;
+                assignmentInfo = new AssignmentInfoResponse
+                {
+                    Department = new LookupItemResponse
+                    {
+                        Id = currentAssignment.Department.DepartmentId,
+                        Code = currentAssignment.Department.DepartmentCode,
+                        Name = currentAssignment.Department.DepartmentName
+                    },
+                    AssigneeName = assigneeName,
+                    AssignmentStatus = staffMember?.Status
+                };
+            }
+
+            // 9. Build response
+            return new StaffIncidentDetailResponse
+            {
+                IssueId = issue.IssueId,
+                ReportId = issue.ReportId,
+                PublicCode = issue.PublicCode,
+                Title = issue.Title,
+                Description = issue.Description,
+                Address = issue.AddressText,
+                Latitude = (double)issue.Latitude,
+                Longitude = (double)issue.Longitude,
+                Status = new LookupItemResponse { Id = issue.Status.StatusId, Code = issue.Status.StatusCode, Name = issue.Status.StatusName },
+                Priority = new LookupItemResponse { Id = issue.Priority.PriorityId, Code = issue.Priority.PriorityCode, Name = issue.Priority.PriorityName },
+                IssueType = new LookupItemResponse { Id = issue.IssueType.IssueTypeId, Code = issue.IssueType.TypeCode, Name = issue.IssueType.TypeName },
+                Area = new LookupItemResponse { Id = issue.Area.AreaId, Code = issue.Area.AreaCode, Name = issue.Area.AreaName },
+                ReportedAt = issue.ReportedAt,
+                IsSlaBreached = issue.Sla?.IsResolutionBreached ?? false,
+                Reporter = new ReporterInfoResponse
+                {
+                    DisplayName = reporter?.FullName ?? "Unknown",
+                    PhoneNumber = reporter?.PhoneNumber,
+                    Email = reporter?.Email
+                },
+                CurrentMember = currentMemberInfo,
+                Assignment = assignmentInfo,
+                ReporterImages = reporterImages,
+                StaffImages = staffImages,
+                Timeline = timeline
+            };
+        }
+
+    public async Task<StaffIncidentDetailResponse> UpdateIssueAsync(long issueId, StaffUpdateIssueRequest request, string staffUserId, CancellationToken cancellationToken)
+    {
+        // 1. Lấy thông tin đơn vị của cán bộ
+        var memberInfo = await _context.DepartmentMembers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.UserId == staffUserId && m.IsActive, cancellationToken);
+
+        if (memberInfo is null)
+        {
+            throw new UnauthorizedAccessException("Bạn không phải là thành viên đang hoạt động của bất kỳ đơn vị nào.");
+        }
+        var departmentId = memberInfo.DepartmentId;
+
+        // 2. Lấy issue
+        var issue = await _context.Issues
+            .Include(i => i.Status)
+            .Include(i => i.Priority)
+            .Include(i => i.IssueType)
+            .Include(i => i.Area)
+            .Include(i => i.Sla)
+            .Include(i => i.Assignments.Where(a => a.IsCurrent)).ThenInclude(a => a.Department)
+            .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken);
+
+        if (issue is null)
+        {
+            throw new KeyNotFoundException($"Không tìm thấy sự cố với ID = {issueId}.");
+        }
+
+        var currentAssignment = issue.Assignments.FirstOrDefault();
+        if (currentAssignment == null || currentAssignment.DepartmentId != departmentId)
+        {
+            throw new UnauthorizedAccessException("Bạn không có quyền cập nhật sự cố này.");
+        }
+
+        var now = DateTime.UtcNow;
+        int? toStatusId = null;
+
+        // 3. Cập nhật trạng thái nếu có
+        if (request.StatusId.HasValue)
+        {
+            var targetStatus = await _context.IssueStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.StatusId == request.StatusId.Value, cancellationToken);
+
+            if (targetStatus == null)
+            {
+                throw new ArgumentException($"Không tìm thấy trạng thái với ID = {request.StatusId}.");
+            }
+
+            if (targetStatus.StatusId != issue.StatusId)
+            {
+                issue.StatusId = targetStatus.StatusId;
+                issue.Status = targetStatus;
+                toStatusId = targetStatus.StatusId;
+
+                if (targetStatus.IsClosed)
+                {
+                    issue.ResolvedAt ??= now;
+                    if (issue.Sla != null)
+                    {
+                        issue.Sla.ResolvedAt = now;
+                    }
+                }
+            }
+        }
+
+        // 4. Tạo IssueUpdate khi có ảnh minh chứng hoặc đổi trạng thái
+        var hasImages = request.Images?.Count > 0;
+        var hasStatusChange = toStatusId.HasValue;
+
+        if (hasImages || hasStatusChange)
+        {
+            var update = new IssueUpdate
+            {
+                IssueId = issueId,
+                CreatedBy = staffUserId,
+                FromStatusId = hasStatusChange ? issue.StatusId : (int?)null,
+                ToStatusId = hasStatusChange ? toStatusId!.Value : issue.StatusId,
+                Note = string.IsNullOrWhiteSpace(request.Note)
+                    ? $"Nhân viên đã upload minh chứng hoàn thành."
+                    : request.Note,
+                IsSystemGenerated = false,
+                CreatedAt = now
+            };
+            _context.IssueUpdates.Add(update);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            // 5. Lưu file ảnh nếu có
+            if (hasImages)
+            {
+                var webRoot = _environment.WebRootPath;
+                var uploadDir = Path.Combine(webRoot, "uploads", "issues", "staff", issueId.ToString());
+
+                if (!Directory.Exists(uploadDir))
+                {
+                    Directory.CreateDirectory(uploadDir);
+                }
+
+                foreach (var image in request.Images!)
+                {
+                    if (image.Length == 0) continue;
+
+                    var extension = Path.GetExtension(image.FileName);
+                    var uniqueFileName = $"{Guid.NewGuid()}{extension}";
+                    var filePath = Path.Combine(uploadDir, uniqueFileName);
+
+                    await using var stream = new FileStream(filePath, FileMode.Create);
+                    await image.CopyToAsync(stream, cancellationToken);
+
+                    var attachment = new IssueAttachment(update.Id)
+                    {
+                        IssueId = issueId,
+                        UploadedBy = staffUserId,
+                        Kind = "image",
+                        FileUrl = $"/uploads/issues/staff/{issueId}/{uniqueFileName}",
+                        MimeType = string.IsNullOrWhiteSpace(image.ContentType) ? "image/jpeg" : image.ContentType,
+                        FileSizeBytes = image.Length,
+                        CreatedAt = now
+                    };
+                    _context.IssueAttachments.Add(attachment);
+                }
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 6. Trả về chi tiết đã cập nhật
+        return (await GetIncidentDetailAsync(issueId, staffUserId, cancellationToken))!;
     }
 }

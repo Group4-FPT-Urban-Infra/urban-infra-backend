@@ -187,7 +187,7 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")
-                        .HasColumnName("audit_log_id");
+                        .HasColumnName("AuditLogId");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
@@ -195,49 +195,49 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
-                        .HasColumnName("action");
+                        .HasColumnName("Action");
 
                     b.Property<string>("ActorUserId")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)")
-                        .HasColumnName("actor_user_id");
+                        .HasColumnName("ActorUserId");
 
                     b.Property<Guid?>("CorrelationId")
                         .HasColumnType("uniqueidentifier")
-                        .HasColumnName("correlation_id");
+                        .HasColumnName("CorrelationId");
 
                     b.Property<string>("EntityId")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
-                        .HasColumnName("entity_id");
+                        .HasColumnName("EntityId");
 
                     b.Property<string>("EntityName")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
-                        .HasColumnName("entity_name");
+                        .HasColumnName("EntityName");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
                         .HasColumnType("nvarchar(45)")
-                        .HasColumnName("ip_address");
+                        .HasColumnName("IpAddress");
 
                     b.Property<string>("NewValues")
                         .HasColumnType("nvarchar(max)")
-                        .HasColumnName("new_values");
+                        .HasColumnName("NewValues");
 
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("datetime2(0)")
-                        .HasColumnName("occurred_at");
+                        .HasColumnName("OccurredAt");
 
                     b.Property<string>("OldValues")
                         .HasColumnType("nvarchar(max)")
-                        .HasColumnName("old_values");
+                        .HasColumnName("OldValues");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)")
-                        .HasColumnName("user_agent");
+                        .HasColumnName("UserAgent");
 
                     b.HasKey("Id");
 

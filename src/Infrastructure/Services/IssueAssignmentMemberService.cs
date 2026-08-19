@@ -47,7 +47,7 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
     {
         var member = await _context.IssueAssignmentMembers
             .Include(x => x.Assignment)
-            .FirstOrDefaultAsync(x => x.AssignmentId == memberId, cancellationToken);
+            .FirstOrDefaultAsync(x => x.MemberId == memberId, cancellationToken);
 
         if (member is null) return null;
 
@@ -146,7 +146,7 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
 
         var member = await _context.IssueAssignmentMembers
             .Include(x => x.Assignment)
-            .FirstOrDefaultAsync(x => x.AssignmentId == memberId, cancellationToken)
+            .FirstOrDefaultAsync(x => x.MemberId == memberId, cancellationToken)
             ?? throw new KeyNotFoundException($"Không tìm thấy phân công có ID = {memberId}.");
 
         var validStatuses = new[] { AssignmentMemberStatus.Accepted, AssignmentMemberStatus.Rejected };
@@ -186,11 +186,86 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
         }
 
         // Tạo IssueUpdate
+        var currentIssueStatusId = await _context.Issues
+            .AsNoTracking()
+            .Where(i => i.IssueId == member.Assignment.IssueId)
+            .Select(i => i.StatusId)
+            .FirstAsync(cancellationToken);
+
         _context.IssueUpdates.Add(new IssueUpdate
         {
             IssueId = member.Assignment.IssueId,
             CreatedBy = actorUserId,
             Note = updateNote,
+            ToStatusId = currentIssueStatusId,
+            IsSystemGenerated = false,
+            CreatedAt = now
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        var users = await _context.Users
+            .Where(u => u.Id == member.UserId || u.Id == member.AssignedBy)
+            .ToDictionaryAsync(u => u.Id, cancellationToken);
+
+        return Map(member, users);
+    }
+
+    public async Task<IssueAssignmentMemberResponse> MarkCompleteAsync(
+        long memberId,
+        string userId,
+        string? note,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        var member = await _context.IssueAssignmentMembers
+            .Include(x => x.Assignment)
+            .FirstOrDefaultAsync(x => x.MemberId == memberId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Không tìm thấy thành viên có ID = {memberId}.");
+
+        if (member.UserId != userId)
+            throw new UnauthorizedAccessException("Chỉ nhân viên được gán mới có thể đánh dấu hoàn thành.");
+
+        if (member.Status != AssignmentMemberStatus.Accepted)
+            throw new InvalidOperationException("Chỉ có thể hoàn thành khi đã chấp nhận phân công.");
+
+        var now = DateTime.UtcNow;
+        member.Status = AssignmentMemberStatus.Completed;
+        member.EndedAt = now;
+
+        // Cập nhật trạng thái issue sang RESOLVED
+        var issue = await _context.Issues
+            .Include(i => i.Sla)
+            .FirstAsync(i => i.IssueId == member.Assignment.IssueId, cancellationToken);
+
+        var resolvedStatus = await _context.IssueStatuses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.StatusCode == "RESOLVED", cancellationToken)
+            ?? throw new InvalidOperationException("Không tìm thấy trạng thái RESOLVED.");
+
+        issue.StatusId = resolvedStatus.StatusId;
+        issue.Status = resolvedStatus;
+        issue.ResolvedAt ??= now;
+        issue.Sla ??= null;
+        if (issue.Sla != null)
+        {
+            issue.Sla.ResolvedAt = now;
+        }
+
+        var user = await _context.Users.FindAsync(new object[] { userId }, cancellationToken);
+        var userFullName = user?.FullName ?? userId;
+        var updateNote = string.IsNullOrWhiteSpace(note)
+            ? $"Nhân viên '{userFullName}' đã hoàn thành công việc."
+            : $"Nhân viên '{userFullName}' đã hoàn thành công việc. Ghi chú: {note.Trim()}";
+
+        _context.IssueUpdates.Add(new IssueUpdate
+        {
+            IssueId = member.Assignment.IssueId,
+            CreatedBy = userId,
+            Note = updateNote,
+            ToStatusId = resolvedStatus.StatusId,
             IsSystemGenerated = false,
             CreatedAt = now
         });
