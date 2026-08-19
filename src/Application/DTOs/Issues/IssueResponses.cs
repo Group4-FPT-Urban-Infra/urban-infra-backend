@@ -38,6 +38,7 @@ public class IssueSummaryResponse
     public int UpvoteCount { get; set; }
     public bool HasUpvoted { get; set; }
     public DateTime ReportedAt { get; set; }
+    public bool IsAssigned { get; set; }
 }
 
 public class IssueDetailResponse : IssueSummaryResponse

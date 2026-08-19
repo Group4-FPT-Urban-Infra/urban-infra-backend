@@ -32,7 +32,7 @@ public class DepartmentManagerSlaController : ControllerBase
     public async Task<ActionResult<ApiResponse<SlaOverviewResponse>>> GetOverview(CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<SlaOverviewResponse> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<SlaOverviewResponse> { Success = false, Message = "Khong co thong tin don vi." });
 
         var result = await _slaService.GetOverviewAsync(deptId, cancellationToken);
         return Ok(new ApiResponse<SlaOverviewResponse> { Success = true, Data = result });
@@ -43,7 +43,7 @@ public class DepartmentManagerSlaController : ControllerBase
     public async Task<ActionResult<ApiResponse<IReadOnlyList<SlaNearDeadlineItem>>>> GetNearDeadline(CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<IReadOnlyList<SlaNearDeadlineItem>> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<IReadOnlyList<SlaNearDeadlineItem>> { Success = false, Message = "Khong co thong tin don vi." });
 
         var result = await _slaService.GetNearDeadlineAsync(deptId, cancellationToken);
         return Ok(new ApiResponse<IReadOnlyList<SlaNearDeadlineItem>> { Success = true, Data = result });
@@ -56,7 +56,7 @@ public class DepartmentManagerSlaController : ControllerBase
         CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<SlaHistoryResponse> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<SlaHistoryResponse> { Success = false, Message = "Khong co thong tin don vi." });
 
         var result = await _slaService.GetHistoryAsync(deptId, months, cancellationToken);
         return Ok(new ApiResponse<SlaHistoryResponse> { Success = true, Data = result });

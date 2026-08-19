@@ -35,7 +35,7 @@ public class DepartmentManagerDashboardController : ControllerBase
     public async Task<ActionResult<ApiResponse<DepartmentManagerDashboardStatsResponse>>> GetStats(CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<DepartmentManagerDashboardStatsResponse> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<DepartmentManagerDashboardStatsResponse> { Success = false, Message = "Không có thông tin đơn vị." });
 
         var result = await _dashboardService.GetStatsAsync(deptId, cancellationToken);
         return Ok(new ApiResponse<DepartmentManagerDashboardStatsResponse> { Success = true, Data = result });
@@ -46,7 +46,7 @@ public class DepartmentManagerDashboardController : ControllerBase
     public async Task<ActionResult<ApiResponse<TeamWorkloadResponse>>> GetTeamWorkload(CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<TeamWorkloadResponse> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<TeamWorkloadResponse> { Success = false, Message = "Không có thông tin đơn vị." });
 
         var result = await _dashboardService.GetTeamWorkloadAsync(deptId, cancellationToken);
         return Ok(new ApiResponse<TeamWorkloadResponse> { Success = true, Data = result });
@@ -60,7 +60,7 @@ public class DepartmentManagerDashboardController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<IReadOnlyList<DepartmentManagerIssueSummary>> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<IReadOnlyList<DepartmentManagerIssueSummary>> { Success = false, Message = "Không có thông tin đơn vị." });
 
         var result = await _dashboardService.GetUnassignedIssuesAsync(deptId, pageNumber, pageSize, cancellationToken);
         return Ok(new ApiResponse<IReadOnlyList<DepartmentManagerIssueSummary>> { Success = true, Data = result });
