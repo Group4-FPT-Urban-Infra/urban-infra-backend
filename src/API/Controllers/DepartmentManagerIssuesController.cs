@@ -41,7 +41,7 @@ public class DepartmentManagerIssuesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<PaginatedResponse<DepartmentManagerIssueSummary>> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<PaginatedResponse<DepartmentManagerIssueSummary>> { Success = false, Message = "Khong co thong tin don vi." });
 
         var result = await _issueService.GetIssuesAsync(deptId, request, cancellationToken);
         return Ok(new ApiResponse<PaginatedResponse<DepartmentManagerIssueSummary>> { Success = true, Data = result });
@@ -71,7 +71,7 @@ public class DepartmentManagerIssuesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var userId = _currentUser.UserId;
-        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new ApiResponse<DepartmentManagerIssueDetailResponse> { Success = false, Message = "Vui long dang nhap." });
+        if (string.IsNullOrWhiteSpace(userId)) return Ok(new ApiResponse<DepartmentManagerIssueDetailResponse> { Success = false, Message = "Vui long dang nhap." });
 
         try
         {
@@ -98,7 +98,7 @@ public class DepartmentManagerIssuesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var userId = _currentUser.UserId;
-        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new ApiResponse<DepartmentManagerIssueDetailResponse> { Success = false, Message = "Vui long dang nhap." });
+        if (string.IsNullOrWhiteSpace(userId)) return Ok(new ApiResponse<DepartmentManagerIssueDetailResponse> { Success = false, Message = "Vui long dang nhap." });
 
         try
         {

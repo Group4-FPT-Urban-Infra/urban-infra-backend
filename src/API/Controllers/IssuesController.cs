@@ -262,25 +262,47 @@ public class IssuesController : ControllerBase
             : Ok(result);
     }
 
-    /// <summary>Admin hoặc quản lý đơn vị đang phụ trách chuyển sự cố sang đơn vị khác.</summary>
+    /// <summary>Admin hoặc quản lý đơn vị đang phụ trách gửi yêu cầu chuyển sự cố sang đơn vị khác.</summary>
     [HttpPost("{issueId:long}/re-route")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentManager}")]
-    public async Task<ActionResult<IssueAssignmentResponse>> ReRoute(
+    public async Task<ActionResult<UrbanInfraSystem.Application.DTOs.ReRouteRequests.ReRouteRequestDto>> ReRoute(
         [FromRoute] long issueId,
         [FromBody] ReassignIssueRequest request,
+        [FromServices] IReRouteRequestService reRouteService,
         CancellationToken cancellationToken)
     {
         var userId = _currentUser.UserId;
         if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
         try
         {
-            return Ok(await _assignmentService.ReassignAsync(
+            return Ok(await reRouteService.CreateRequestAsync(
                 issueId, request, userId, _currentUser.IsInRole(Roles.Admin), cancellationToken));
         }
         catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
         catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
         catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
+    }
+
+    /// <summary>Admin phân công thủ công sự cố khi Routing Rule không hoạt động.</summary>
+    [HttpPost("{issueId:long}/assignments/manual-route")]
+    [Authorize(Roles = Roles.Admin)]
+    public async Task<ActionResult<IssueAssignmentResponse>> ManualRoute(
+        [FromRoute] long issueId,
+        [FromBody] ManualRouteRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
+        try
+        {
+            var result = await _assignmentService.ManualRouteAsync(issueId, request, userId, cancellationToken);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     /// <summary>Lấy danh sách nhân viên được gán vào một phân công cụ thể.</summary>

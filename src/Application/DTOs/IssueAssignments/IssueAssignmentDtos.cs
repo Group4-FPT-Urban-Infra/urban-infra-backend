@@ -2,6 +2,15 @@ using System.ComponentModel.DataAnnotations;
 
 namespace UrbanInfraSystem.Application.DTOs.IssueAssignments;
 
+public class ManualRouteRequest
+{
+    [Range(1, int.MaxValue)]
+    public int DepartmentId { get; set; }
+
+    [MaxLength(1000)]
+    public string? Note { get; set; }
+}
+
 public class ReassignIssueRequest
 {
     [Range(1, int.MaxValue)]

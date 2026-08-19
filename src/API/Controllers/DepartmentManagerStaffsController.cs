@@ -32,7 +32,7 @@ public class DepartmentManagerStaffsController : ControllerBase
     public async Task<ActionResult<ApiResponse<IReadOnlyList<StaffMemberResponse>>>> GetStaffs(CancellationToken cancellationToken)
     {
         var deptId = GetDepartmentId();
-        if (deptId == 0) return Unauthorized(new ApiResponse<IReadOnlyList<StaffMemberResponse>> { Success = false, Message = "Khong co thong tin don vi." });
+        if (deptId == 0) return Ok(new ApiResponse<IReadOnlyList<StaffMemberResponse>> { Success = false, Message = "Khong co thong tin don vi." });
 
         var result = await _staffService.GetStaffsAsync(deptId, cancellationToken);
         return Ok(new ApiResponse<IReadOnlyList<StaffMemberResponse>> { Success = true, Data = result });
