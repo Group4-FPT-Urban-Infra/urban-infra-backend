@@ -328,7 +328,19 @@ public class UserManagementService : IUserManagementService
         var user = await _userManager.FindByIdAsync(userId);
         if (user is null) return false;
 
-        var result = await _userManager.DeleteAsync(user);
+        if (userId == _currentUser.UserId)
+            throw new InvalidOperationException("Không thể xóa tài khoản đang đăng nhập.");
+
+        IdentityResult result;
+        try
+        {
+            result = await _userManager.DeleteAsync(user);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new InvalidOperationException(
+                "Không thể xóa tài khoản vì tài khoản đang được tham chiếu bởi dữ liệu nghiệp vụ. Hãy khóa tài khoản thay thế.", ex);
+        }
         if (!result.Succeeded)
             throw new InvalidOperationException(
                 "Không thể xóa tài khoản: " + string.Join("; ", result.Errors.Select(e => e.Description)));

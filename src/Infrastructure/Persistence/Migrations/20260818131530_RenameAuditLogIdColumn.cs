@@ -10,19 +10,21 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "Id",
-                table: "AuditLogs",
-                newName: "AuditLogId");
+            migrationBuilder.Sql("""
+                IF COL_LENGTH('dbo.AuditLogs', 'Id') IS NOT NULL
+                   AND COL_LENGTH('dbo.AuditLogs', 'AuditLogId') IS NULL
+                    EXEC sp_rename N'dbo.AuditLogs.Id', N'AuditLogId', N'COLUMN';
+                """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "AuditLogId",
-                table: "AuditLogs",
-                newName: "Id");
+            migrationBuilder.Sql("""
+                IF COL_LENGTH('dbo.AuditLogs', 'AuditLogId') IS NOT NULL
+                   AND COL_LENGTH('dbo.AuditLogs', 'Id') IS NULL
+                    EXEC sp_rename N'dbo.AuditLogs.AuditLogId', N'Id', N'COLUMN';
+                """);
         }
     }
 }

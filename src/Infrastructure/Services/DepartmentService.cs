@@ -114,7 +114,15 @@ public class DepartmentService : IDepartmentService
             .ToListAsync(cancellationToken);
         _context.DepartmentMembers.RemoveRange(membershipHistory);
         _context.Departments.Remove(department);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new InvalidOperationException(
+                "Không thể xóa đơn vị vì đơn vị đang được tham chiếu bởi dữ liệu nghiệp vụ.", ex);
+        }
         return true;
     }
 
