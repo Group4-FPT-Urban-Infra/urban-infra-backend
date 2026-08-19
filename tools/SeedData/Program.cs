@@ -51,16 +51,16 @@ static RootCommand RootCommand()
         await new SeedEscalationRules(db, logger).SeedAsync();
 
         // 6. Issues (depends on users, issue types, priorities, statuses, areas)
-        await new SeedIssues(db, logger).SeedAsync();
+        // await new SeedIssues(db, logger).SeedAsync();
 
         // 7. Issue assignments and members (depends on issues, departments, users)
-        await new SeedIssueAssignments(db, logger).SeedAsync();
+        // await new SeedIssueAssignments(db, logger).SeedAsync();
 
         // 8. Issue-related data: SLA tracking, upvotes, attachments (depends on issues, SLA policies)
-        await new SeedIssueRelatedData(db, logger).SeedAsync();
+        // await new SeedIssueRelatedData(db, logger).SeedAsync();
 
         // 9. Seed ReportIssueTypes for existing reports
-        await SeedReportIssueTypesAsync(db, logger);
+        // await SeedReportIssueTypesAsync(db, logger);
 
         logger.LogInformation("Seed completed successfully!");
     });

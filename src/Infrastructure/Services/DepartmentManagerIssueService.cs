@@ -260,8 +260,20 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
 
         _context.IssueAssignmentMembers.Add(member);
 
-        var issue = await _context.Issues.FindAsync(new object[] { issueId }, cancellationToken)
+        var issue = await _context.Issues
+            .Include(i => i.Sla)
+            .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken)
             ?? throw new KeyNotFoundException($"Khong tim thay su co co ID = {issueId}.");
+
+        // Cap nhat FirstRespondedAt lan dau tien duoc gan nhan vien
+        if (issue.Sla != null && !issue.Sla.FirstRespondedAt.HasValue)
+        {
+            issue.Sla.FirstRespondedAt = now;
+            if (issue.Sla.FirstResponseDueAt.HasValue && now > issue.Sla.FirstResponseDueAt.Value)
+            {
+                issue.Sla.IsFirstResponseBreached = true;
+            }
+        }
 
         _context.IssueUpdates.Add(new IssueUpdate
         {

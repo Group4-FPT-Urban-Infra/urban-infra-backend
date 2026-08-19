@@ -252,6 +252,10 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
         if (issue.Sla != null)
         {
             issue.Sla.ResolvedAt = now;
+            if (now > issue.Sla.ResolutionDueAt)
+            {
+                issue.Sla.IsResolutionBreached = true;
+            }
         }
 
         var user = await _context.Users.FindAsync(new object[] { userId }, cancellationToken);

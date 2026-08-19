@@ -21,7 +21,7 @@ public class SeedIssueRelatedData
         await SeedIssueSlasAsync();
         await SeedIssueUpvotesAsync();
         await SeedIssueAttachmentsAsync();
-        await SeedEscalationEventsAsync();
+        // EscalationEvents được tạo bởi SlaCheckBackgroundService khi chạy
     }
 
     private async Task SeedIssueSlasAsync()
@@ -234,108 +234,4 @@ public class SeedIssueRelatedData
         }
     }
 
-    private async Task SeedEscalationEventsAsync()
-    {
-        if (_db.EscalationEvents.Any())
-        {
-            _logger.LogInformation("EscalationEvents already exist, skipping.");
-            return;
-        }
-
-        var issues = _db.Issues
-            .Include(i => i.Status)
-            .Include(i => i.Sla)
-            .Where(i => i.Sla != null)
-            .ToList();
-
-        if (issues.Count == 0)
-        {
-            _logger.LogInformation("No issues with SLA found. Skipping escalation events.");
-            return;
-        }
-
-        var escalationRules = _db.EscalationRules.ToList();
-        if (escalationRules.Count == 0)
-        {
-            _logger.LogWarning("No escalation rules found. Run SeedEscalationRules first.");
-            return;
-        }
-
-        var events = new List<EscalationEvent>();
-        var random = new Random(42);
-
-        foreach (var issue in issues)
-        {
-            if (issue.Sla == null) continue;
-
-            var slaPolicies = _db.SlaPolicies.ToList();
-            var sla = slaPolicies.FirstOrDefault(p => p.Id == issue.Sla.SlaPolicyId);
-            if (sla == null) continue;
-
-            var relevantRules = escalationRules
-                .Where(r => r.SlaPolicyId == sla.Id && r.IsActive)
-                .OrderBy(r => r.OverdueMinutes)
-                .ToList();
-
-            foreach (var rule in relevantRules)
-            {
-                var triggerAt = issue.ReportedAt.AddMinutes(rule.OverdueMinutes);
-
-                // Only create event if trigger time has passed (realistic: past issues may have triggered)
-                if (triggerAt > DateTime.UtcNow) continue;
-
-                var issueSla = issue.Sla;
-                var isBreached = rule.EscalationLevel switch
-                {
-                    1 => DateTime.UtcNow > issueSla.FirstResponseDueAt,
-                    2 or 3 or 4 => DateTime.UtcNow > issueSla.ResolutionDueAt,
-                    _ => true
-                };
-
-                if (!isBreached) continue;
-
-                // Status check: only for open issues
-                var openStatuses = new[] { "NEW", "ASSIGNED", "IN_PROGRESS", "PENDING_INFO", "REQUEST_REOPEN" };
-                if (!openStatuses.Contains(issue.Status?.StatusCode ?? ""))
-                    continue;
-
-                var eventStatus = triggerAt < DateTime.UtcNow.AddDays(-1)
-                    ? "Acknowledged"
-                    : "Pending";
-
-                var dept = rule.TargetDepartmentId != null
-                    ? _db.Departments.FirstOrDefault(d => d.DepartmentId == rule.TargetDepartmentId)
-                    : null;
-
-                var managers = _db.DepartmentMembers
-                    .Where(dm => dm.IsManager && dm.IsActive &&
-                        (dept == null || dm.DepartmentId == dept.DepartmentId))
-                    .ToList();
-                var targetUserId = managers.Count > 0
-                    ? managers[random.Next(managers.Count)].UserId
-                    : null;
-
-                events.Add(new EscalationEvent
-                {
-                    IssueId = issue.IssueId,
-                    EscalationRuleId = rule.Id,
-                    TargetDepartmentId = rule.TargetDepartmentId,
-                    TargetUserId = targetUserId,
-                    TriggeredAt = triggerAt,
-                    AcknowledgedAt = eventStatus == "Acknowledged"
-                        ? triggerAt.AddHours(random.Next(1, 8))
-                        : null,
-                    EventStatus = eventStatus,
-                    Note = $"Leo thang mức {rule.EscalationLevel}: {rule.NotificationTitle}"
-                });
-            }
-        }
-
-        if (events.Count > 0)
-        {
-            _db.EscalationEvents.AddRange(events);
-            await _db.SaveChangesAsync();
-            _logger.LogInformation("Seeded {Count} escalation events.", events.Count);
-        }
-    }
 }

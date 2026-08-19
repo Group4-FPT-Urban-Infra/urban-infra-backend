@@ -486,6 +486,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
 
             entity.Property(x => x.SlaPolicyId).IsRequired();
             entity.Property(x => x.OverdueMinutes).IsRequired();
+            entity.Property(x => x.EscalationType).IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(50)
+                  .IsUnicode(false);
             entity.Property(x => x.TargetRoleName).HasMaxLength(100).IsUnicode(false);
             entity.Property(x => x.EscalationLevel).IsRequired();
             entity.Property(x => x.NotificationTitle).HasMaxLength(250);
@@ -503,7 +507,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, 
                   .HasForeignKey(x => x.TargetDepartmentId)
                   .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasIndex(x => new { x.SlaPolicyId, x.EscalationLevel, x.OverdueMinutes, x.TargetDepartmentId, x.TargetRoleName })
+            entity.HasIndex(x => new { x.SlaPolicyId, x.EscalationType, x.EscalationLevel, x.OverdueMinutes, x.TargetDepartmentId, x.TargetRoleName })
                   .IsUnique()
                   .HasDatabaseName("UX_EscalationRules_UniqueCombination");
         });

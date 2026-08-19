@@ -67,10 +67,10 @@ public class SeedSlaPolicies
     {
         var baseResolution = priorityCode switch
         {
-            "CRITICAL" => 120,   // 2h resolve
+            "CRITICAL" => 75,    // 75min base (LIGHT+CRITICAL = 5m, else 2h)
             "HIGH"     => 480,   // 8h resolve
             "MEDIUM"   => 1440,  // 24h resolve
-            "LOW"      => 4320,  // 72h resolve
+            "LOW"      => 4320, // 72h resolve
             _          => 1440
         };
 
@@ -90,7 +90,7 @@ public class SeedSlaPolicies
             "POTHOLE" or "ROAD" => 0.8m,  // Road hazards — urgent
             "GARBAGE" or "TREE"  => 1.25m, // Environmental — slower
             "SIGN"                => 1.0m,  // Baseline
-            "LIGHT"              => 0.9m,  // Slightly faster
+            "LIGHT"              => priorityCode == "CRITICAL" ? 0.067m : 0.9m, // Critical LIGHT: 1min response / 5min resolve
             _                    => 1.0m
         };
 
