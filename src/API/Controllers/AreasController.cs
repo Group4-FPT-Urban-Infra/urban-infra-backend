@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using UrbanInfraSystem.Application.DTOs.Areas;
 using UrbanInfraSystem.Application.Interfaces;
+using UrbanInfraSystem.Domain.Enums;
 
 namespace UrbanInfraSystem.API.Controllers;
 
@@ -54,7 +55,7 @@ public class AreasController : ControllerBase
     /// Tạo mới một khu vực (hỗ trợ parent_area_id và ranh giới GeoJSON/Geography).
     /// </summary>
     [HttpPost]
-    [AllowAnonymous]
+    [Authorize(Roles = Roles.Admin)]
     [ProducesResponseType(typeof(AreaResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AreaResponse>> CreateArea([FromBody] CreateAreaRequest request, CancellationToken cancellationToken)
@@ -78,7 +79,7 @@ public class AreasController : ControllerBase
     /// Cập nhật thông tin khu vực theo ID.
     /// </summary>
     [HttpPut("{id:int}")]
-    [AllowAnonymous]
+    [Authorize(Roles = Roles.Admin)]
     [ProducesResponseType(typeof(AreaResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -107,7 +108,7 @@ public class AreasController : ControllerBase
     /// Xóa một khu vực theo ID (kiểm tra không cho xóa nếu có khu vực con phụ thuộc).
     /// </summary>
     [HttpDelete("{id:int}")]
-    [AllowAnonymous]
+    [Authorize(Roles = Roles.Admin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
