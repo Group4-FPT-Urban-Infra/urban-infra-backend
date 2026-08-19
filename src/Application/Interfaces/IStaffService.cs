@@ -1,6 +1,7 @@
 using UrbanInfraSystem.Application.DTOs.Staff;
 using System.Collections.Generic;
 using UrbanInfraSystem.Application.DTOs.Issues;
+using Microsoft.AspNetCore.Http;
 
 namespace UrbanInfraSystem.Application.Interfaces;
 
@@ -50,7 +51,7 @@ public interface IStaffService
     /// <param name="filters">Các tham số lọc.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Danh sách các sự cố phù hợp để hiển thị trên bản đồ.</returns>
-    Task<List<StaffMapIssueResponse>> GetMapIssuesAsync(string staffUserId, StaffIncidentFilterRequest filters, CancellationToken cancellationToken);
+    Task<List<StaffMapIssueResponse>> GetMapIssuesAsync(string staffUserId, StaffMapFilterRequest filters, CancellationToken cancellationToken);
 
     /// <summary>
     /// Cho phép cán bộ đang đăng nhập nhận (claim) một sự cố chưa được phân công.
@@ -63,4 +64,25 @@ public interface IStaffService
     /// <exception cref="InvalidOperationException">Khi sự cố đã được phân công.</exception>
     /// <exception cref="UnauthorizedAccessException">Khi người dùng không thuộc đơn vị nào.</exception>
     Task ClaimIncidentAsync(long issueId, string staffUserId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lấy chi tiết một sự cố cụ thể để hiển thị cho cán bộ xử lý.
+    /// </summary>
+    /// <param name="issueId">ID của sự cố cần lấy chi tiết.</param>
+    /// <param name="staffUserId">ID của cán bộ đang đăng nhập.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Chi tiết sự cố hoặc null nếu không có quyền truy cập.</returns>
+    Task<StaffIncidentDetailResponse?> GetIncidentDetailAsync(long issueId, string staffUserId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cán bộ cập nhật trạng thái sự cố và/hoặc tải lên bằng chứng xử lý.
+    /// Tạo một IssueUpdate mới với các file đính kèm nếu có.
+    /// </summary>
+    /// <param name="issueId">ID của sự cố.</param>
+    /// <param name="request">Yêu cầu cập nhật kèm danh sách file ảnh.</param>
+    /// <param name="staffUserId">ID của cán bộ thực hiện.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="KeyNotFoundException">Khi không tìm thấy sự cố.</exception>
+    /// <exception cref="UnauthorizedAccessException">Khi không có quyền.</exception>
+    Task<StaffIncidentDetailResponse> UpdateIssueAsync(long issueId, StaffUpdateIssueRequest request, string staffUserId, CancellationToken cancellationToken);
 }

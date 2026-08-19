@@ -56,11 +56,35 @@ public class StaffIncidentFilterRequest
 {
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
-    public string? Assignment { get; set; }
+    /// <summary>
+    /// Bộ lọc theo phạm vi: "my" = chỉ issue của tôi, "department" = issue của đơn vị, "all" = tất cả (mặc định)
+    /// </summary>
+    public string Scope { get; set; } = "department";
     public string[]? StatusCodes { get; set; }
     public int[]? PriorityIds { get; set; }
     public int[]? IssueTypeIds { get; set; }
     public string? Keyword { get; set; }
+}
+
+/// <summary>
+/// DTO cho các tham số lọc khi lấy danh sách sự cố hiển thị trên bản đồ.
+/// </summary>
+public class StaffMapFilterRequest
+{
+    /// <summary>
+    /// Bộ lọc theo phạm vi: "my" = chỉ issue của tôi, "department" = issue của đơn vị, "all" = tất cả (mặc định)
+    /// </summary>
+    public string Scope { get; set; } = "department";
+    public string[]? StatusCodes { get; set; }
+    public int[]? PriorityIds { get; set; }
+    public int[]? IssueTypeIds { get; set; }
+    public string? Keyword { get; set; }
+    /// <summary>
+    /// Bán kính tìm kiếm tính bằng mét. Nếu có giá trị, sẽ lọc theo vị trí.
+    /// </summary>
+    public double? RadiusMeters { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
 }
 
 /// <summary>
@@ -77,6 +101,10 @@ public class StaffIncidentResponse
     public LookupItemResponse Area { get; set; } = null!;
     public DateTime ReportedAt { get; set; }
     public LookupItemResponse? AssignedDepartment { get; set; }
+    /// <summary>
+    /// Trạng thái phân công của cán bộ hiện tại: PENDING, ACCEPTED, REJECTED, COMPLETED
+    /// </summary>
+    public string? AssignmentStatus { get; set; }
     public bool IsSlaBreached { get; set; }
 }
 

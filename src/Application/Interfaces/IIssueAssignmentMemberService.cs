@@ -24,6 +24,16 @@ public interface IIssueAssignmentMemberService
         string userId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Đánh dấu một thành viên đã hoàn thành công việc trong phân công.
+    /// Tạo IssueUpdate ghi nhận sự hoàn thành.
+    /// </summary>
+    Task<IssueAssignmentMemberResponse> MarkCompleteAsync(
+        long memberId,
+        string userId,
+        string? note,
+        CancellationToken cancellationToken = default);
+
     Task RemoveMemberAsync(
         long memberId,
         string removedBy,
