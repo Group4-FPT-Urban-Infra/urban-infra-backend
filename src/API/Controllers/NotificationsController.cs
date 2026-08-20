@@ -50,6 +50,46 @@ public class NotificationsController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy toàn bộ thông báo của người dùng (bao gồm đã đọc và chưa đọc).
+    /// </summary>
+    [HttpGet("all")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(IReadOnlyList<NotificationResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<NotificationResponse>>> GetAll(
+        [FromQuery(Name = "user_id")] string? userId,
+        CancellationToken cancellationToken)
+    {
+        var targetUserId = !string.IsNullOrWhiteSpace(userId) ? userId : _currentUser.UserId;
+        if (string.IsNullOrWhiteSpace(targetUserId))
+        {
+            return Ok(new List<NotificationResponse>());
+        }
+
+        var result = await _notificationService.GetAllByUserIdAsync(targetUserId, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Lấy danh sách thông báo đã đọc của người dùng.
+    /// </summary>
+    [HttpGet("read")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(IReadOnlyList<NotificationResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<NotificationResponse>>> GetRead(
+        [FromQuery(Name = "user_id")] string? userId,
+        CancellationToken cancellationToken)
+    {
+        var targetUserId = !string.IsNullOrWhiteSpace(userId) ? userId : _currentUser.UserId;
+        if (string.IsNullOrWhiteSpace(targetUserId))
+        {
+            return Ok(new List<NotificationResponse>());
+        }
+
+        var result = await _notificationService.GetReadByUserIdAsync(targetUserId, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Tạo mới một thông báo thủ công (hoặc thông qua service/tích hợp).
     /// </summary>
     [HttpPost]

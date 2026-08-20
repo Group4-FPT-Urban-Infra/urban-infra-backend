@@ -11,6 +11,10 @@ public interface INotificationService
 
     Task<IReadOnlyList<NotificationResponse>> GetUnreadByUserIdAsync(string userId, CancellationToken ct = default);
 
+    Task<IReadOnlyList<NotificationResponse>> GetAllByUserIdAsync(string userId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<NotificationResponse>> GetReadByUserIdAsync(string userId, CancellationToken ct = default);
+
     Task<bool> MarkAsReadAsync(long notificationId, string userId, CancellationToken ct = default);
 
     Task<bool> MarkAllAsReadAsync(string userId, CancellationToken ct = default);

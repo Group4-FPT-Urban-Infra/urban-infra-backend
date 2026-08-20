@@ -12,6 +12,15 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
 
     public DepartmentManagerIssueService(AppDbContext context) => _context = context;
 
+    private static string GetUserRoleName(string userId, List<string> memberIds)
+    {
+        if (memberIds.Contains(userId))
+        {
+            return "Nhân viên";
+        }
+        return "Công dân";
+    }
+
     public async Task<PaginatedResponse<DepartmentManagerIssueSummary>> GetIssuesAsync(int departmentId, DepartmentManagerIssueListRequest request, CancellationToken cancellationToken = default)
     {
         var currentAssignmentIds = await _context.IssueAssignments
@@ -138,6 +147,7 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
             .Include(i => i.Priority)
             .Include(i => i.Status)
             .Include(i => i.Attachments)
+                .ThenInclude(a => a.Update)
             .Include(i => i.Priority)
             .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken);
 
@@ -178,6 +188,47 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
             .Where(u => updateUserIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, cancellationToken);
 
+        var attachmentUserIds = issue.Attachments
+            .Where(a => a.Update != null)
+            .Select(a => a.Update!.CreatedBy)
+            .Distinct()
+            .ToList();
+
+        var attachmentUsers = await _context.Users
+            .Where(u => attachmentUserIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, cancellationToken);
+
+        var imageUrls = issue.Attachments.Select(a =>
+        {
+            var uploaderName = "Người dân";
+            var uploaderRole = "Công dân";
+            var kind = "citizen";
+
+            if (a.Update != null)
+            {
+                if (attachmentUsers.TryGetValue(a.Update.CreatedBy, out var uploader))
+                {
+                    uploaderName = uploader.FullName;
+                    uploaderRole = GetUserRoleName(uploader.Id, memberIds);
+                    kind = memberIds.Contains(uploader.Id) ? "staff" : "citizen";
+                }
+                else if (!string.IsNullOrEmpty(a.UploadedBy))
+                {
+                    uploaderName = a.UploadedBy;
+                }
+            }
+
+            return new ImageInfoDto
+            {
+                Url = a.FileUrl,
+                ThumbnailUrl = a.ThumbnailUrl,
+                UploadedByName = uploaderName,
+                UploadedByRole = uploaderRole,
+                UploadedAt = a.CreatedAt,
+                Kind = kind
+            };
+        }).ToList();
+
         return new DepartmentManagerIssueDetailResponse
         {
             IssueId = issue.IssueId,
@@ -194,7 +245,7 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
             ResolvedAt = issue.ResolvedAt,
             UpvoteCount = issue.UpvoteCount,
             IsPublic = issue.IsPublic,
-            ImageUrls = issue.Attachments.Select(a => a.FileUrl).ToList(),
+            ImageUrls = imageUrls,
             CurrentAssignment = currentAssignment is null ? null : new CurrentAssignmentInfo
             {
                 AssignmentId = currentAssignment.AssignmentId,
@@ -264,16 +315,6 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
             .Include(i => i.Sla)
             .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken)
             ?? throw new KeyNotFoundException($"Khong tim thay su co co ID = {issueId}.");
-
-        // Cap nhat FirstRespondedAt lan dau tien duoc gan nhan vien
-        if (issue.Sla != null && !issue.Sla.FirstRespondedAt.HasValue)
-        {
-            issue.Sla.FirstRespondedAt = now;
-            if (issue.Sla.FirstResponseDueAt.HasValue && now > issue.Sla.FirstResponseDueAt.Value)
-            {
-                issue.Sla.IsFirstResponseBreached = true;
-            }
-        }
 
         // Neu hien tai la trang thai NEW, chuyen sang ASSIGNED
         var currentStatus = await _context.IssueStatuses
