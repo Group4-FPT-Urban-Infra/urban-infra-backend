@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using NetTopologySuite.Geometries;
 
@@ -597,6 +597,7 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     OverdueMinutes = table.Column<int>(type: "int", nullable: false),
                     TargetDepartmentId = table.Column<int>(type: "int", nullable: true),
                     TargetRoleName = table.Column<string>(type: "varchar(100)", unicode: false, maxLength: 100, nullable: true),
+                    EscalationType = table.Column<string>(type: "varchar(50)", unicode: false, maxLength: 50, nullable: false),
                     EscalationLevel = table.Column<int>(type: "int", nullable: false),
                     NotificationTitle = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     NotificationTemplate = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
@@ -972,7 +973,7 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "UX_EscalationRules_UniqueCombination",
                 table: "EscalationRules",
-                columns: new[] { "SlaPolicyId", "EscalationLevel", "OverdueMinutes", "TargetDepartmentId", "TargetRoleName" },
+                columns: new[] { "SlaPolicyId", "EscalationType", "EscalationLevel", "OverdueMinutes", "TargetDepartmentId", "TargetRoleName" },
                 unique: true,
                 filter: "[TargetDepartmentId] IS NOT NULL AND [TargetRoleName] IS NOT NULL");
 

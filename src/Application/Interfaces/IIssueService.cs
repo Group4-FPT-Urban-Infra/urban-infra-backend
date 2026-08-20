@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using UrbanInfraSystem.Application.DTOs.Dashboard;
 using UrbanInfraSystem.Application.DTOs.Issues;
 
@@ -45,4 +46,17 @@ public interface IIssueService
     Task<ApiResponse<IReadOnlyList<NearbyIssueResponse>>> FindNearbyIssuesAsync(FindNearbyIssuesRequest request, string? currentUserId = null, CancellationToken cancellationToken = default);
 
     Task<ApiResponse<IReadOnlyList<IssueTimelineItemResponse>>> GetIssueTimelineAsync(long issueId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Công dân yêu cầu mở lại sự cố đã resolved/closed.
+    /// Chuyển trạng thái sang REQUEST_REOPEN, ghi log vào IssueUpdate và gửi thông báo đến DepartmentManager.
+    /// </summary>
+    Task<ApiResponse<IssueDetailResponse>> RequestReopenIssueAsync(long issueId, string note, IReadOnlyList<IFormFile>? images, string reporterId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Department Manager duyệt / từ chối yêu cầu mở lại sự cố.
+    /// Duyệt: chuyển sang IN_PROGRESS, các member từ COMPLETED → ACCEPTED, gửi thông báo đến staff.
+    /// Từ chối: chuyển sang REJECTED.
+    /// </summary>
+    Task<ApiResponse<IssueDetailResponse>> ReviewReopenIssueAsync(long issueId, bool approved, string? note, string managerUserId, CancellationToken cancellationToken = default);
 }

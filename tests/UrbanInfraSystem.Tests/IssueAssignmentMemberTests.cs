@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using UrbanInfraSystem.Application.DTOs.Departments;
+using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Entities;
 using UrbanInfraSystem.Domain.Enums;
 using UrbanInfraSystem.Infrastructure.Identity;
@@ -21,6 +22,13 @@ public class IssueAssignmentMemberTests
         var store = new Mock<IUserStore<ApplicationUser>>();
         var mgr = new Mock<UserManager<ApplicationUser>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
         return mgr;
+    }
+
+    private static Mock<ICurrentUserService> CreateMockCurrentUser(string? userId = null)
+    {
+        var mock = new Mock<ICurrentUserService>();
+        mock.Setup(x => x.UserId).Returns(userId);
+        return mock;
     }
 
     [Fact]
@@ -46,7 +54,7 @@ public class IssueAssignmentMemberTests
         mockUserManager.Setup(m => m.FindByIdAsync("staff-1")).ReturnsAsync(staffUser);
         mockUserManager.Setup(m => m.IsInRoleAsync(staffUser, Roles.DepartmentStaff)).ReturnsAsync(true);
 
-        var service = new DepartmentMemberService(db, mockUserManager.Object);
+        var service = new DepartmentMemberService(db, mockUserManager.Object, CreateMockCurrentUser().Object);
         var request = new AssignDepartmentMemberRequest
         {
             UserId = "staff-1",
@@ -83,7 +91,7 @@ public class IssueAssignmentMemberTests
         var mockUserManager = CreateMockUserManager();
         mockUserManager.Setup(m => m.FindByIdAsync("non-existent")).ReturnsAsync((ApplicationUser?)null);
 
-        var service = new DepartmentMemberService(db, mockUserManager.Object);
+        var service = new DepartmentMemberService(db, mockUserManager.Object, CreateMockCurrentUser().Object);
         var request = new AssignDepartmentMemberRequest { UserId = "non-existent" };
 
         // Act & Assert
@@ -107,7 +115,7 @@ public class IssueAssignmentMemberTests
         mockUserManager.Setup(m => m.FindByIdAsync("citizen-1")).ReturnsAsync(citizenUser);
         mockUserManager.Setup(m => m.IsInRoleAsync(citizenUser, Roles.DepartmentStaff)).ReturnsAsync(false);
 
-        var service = new DepartmentMemberService(db, mockUserManager.Object);
+        var service = new DepartmentMemberService(db, mockUserManager.Object, CreateMockCurrentUser().Object);
 
         // 1. Test Inactive User
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -135,7 +143,7 @@ public class IssueAssignmentMemberTests
         await db.SaveChangesAsync();
 
         var mockUserManager = CreateMockUserManager();
-        var service = new DepartmentMemberService(db, mockUserManager.Object);
+        var service = new DepartmentMemberService(db, mockUserManager.Object, CreateMockCurrentUser().Object);
 
         // Act
         var success = await service.RemoveMemberAsync(1, "staff-1");
@@ -170,7 +178,7 @@ public class IssueAssignmentMemberTests
         await db.SaveChangesAsync();
 
         var mockUserManager = CreateMockUserManager();
-        var service = new DepartmentMemberService(db, mockUserManager.Object);
+        var service = new DepartmentMemberService(db, mockUserManager.Object, CreateMockCurrentUser().Object);
 
         // Act: Get active only (default true)
         var activeMembers = await service.GetMembersAsync(1, activeOnly: true);

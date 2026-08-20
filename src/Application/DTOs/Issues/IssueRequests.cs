@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace UrbanInfraSystem.Application.DTOs.Issues;
 
@@ -72,4 +74,20 @@ public class GetMyIssuesRequest
 
     [Range(1, 100)]
     public int PageSize { get; set; } = 20;
+}
+
+public class RequestReopenIssueRequest
+{
+    [MaxLength(2000)]
+    public string? Note { get; set; }
+
+    public List<IFormFile>? Images { get; set; }
+}
+
+public class ReviewReopenIssueRequest
+{
+    public bool Approved { get; set; }
+
+    [MaxLength(2000)]
+    public string? Note { get; set; }
 }

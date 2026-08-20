@@ -103,6 +103,16 @@ public class ReRouteRequestService : IReRouteRequestService
         return requests.Select(MapToDto).ToList();
     }
 
+    public async Task<ReRouteRequestDto?> GetPendingRequestByIssueIdAsync(long issueId, CancellationToken cancellationToken = default)
+    {
+        var request = await _context.ReRouteRequests
+            .Include(x => x.CurrentDepartment)
+            .Include(x => x.TargetDepartment)
+            .FirstOrDefaultAsync(x => x.IssueId == issueId && x.Status == ReRouteStatus.Pending, cancellationToken);
+
+        return request != null ? MapToDto(request) : null;
+    }
+
     public async Task<bool> AcceptRequestAsync(long requestId, string actorUserId, CancellationToken cancellationToken = default)
     {
         var request = await _context.ReRouteRequests
@@ -265,6 +275,26 @@ public class ReRouteRequestService : IReRouteRequestService
             NotificationType = "SYSTEM"
         }, cancellationToken);
 
+        return true;
+    }
+
+    public async Task<bool> CancelRequestAsync(long requestId, string actorUserId, CancellationToken cancellationToken = default)
+    {
+        var request = await _context.ReRouteRequests
+            .FirstOrDefaultAsync(x => x.Id == requestId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Không tìm thấy yêu cầu chuyển tiếp có ID = {requestId}.");
+
+        if (request.Status != ReRouteStatus.Pending)
+            throw new InvalidOperationException("Yêu cầu này không còn ở trạng thái chờ xử lý.");
+
+        if (request.RequestedBy != actorUserId)
+            throw new UnauthorizedAccessException("Chỉ người tạo yêu cầu mới được hủy.");
+
+        request.Status = ReRouteStatus.Cancelled;
+        request.ProcessedAt = DateTime.UtcNow;
+        request.ProcessedBy = actorUserId;
+
+        await _context.SaveChangesAsync(cancellationToken);
         return true;
     }
 

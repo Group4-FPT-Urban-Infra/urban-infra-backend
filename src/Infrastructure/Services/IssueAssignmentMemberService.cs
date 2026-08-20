@@ -185,19 +185,108 @@ public class IssueAssignmentMemberService : IIssueAssignmentMemberService
             updateNote = $"Nhân viên '{userFullName}' đã từ chối phân công." + (string.IsNullOrWhiteSpace(request.Note) ? "" : $" Lý do: {request.Note.Trim()}");
         }
 
-        // Tạo IssueUpdate
-        var currentIssueStatusId = await _context.Issues
+        // Lấy issue để cập nhật trạng thái
+        var issue = await _context.Issues
+            .Include(i => i.Sla)
+            .FirstAsync(i => i.IssueId == member.Assignment.IssueId, cancellationToken);
+
+        if (newStatus == AssignmentMemberStatus.Accepted)
+        {
+            // Chuyen trang thai issue sang IN_PROGRESS khi chap nhan
+            var currentStatus = await _context.IssueStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.StatusId == issue.StatusId, cancellationToken);
+
+            var inProgressStatus = await _context.IssueStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.StatusCode == "IN_PROGRESS", cancellationToken)
+                ?? throw new InvalidOperationException("Khong tim thay trang thai IN_PROGRESS.");
+
+            // Neu chua phai IN_PROGRESS hoac da dong thi chuyen sang IN_PROGRESS
+            if (currentStatus == null || (currentStatus.StatusCode != "IN_PROGRESS" && !currentStatus.IsClosed))
+            {
+                var previousStatusId = issue.StatusId;
+                issue.StatusId = inProgressStatus.StatusId;
+                _context.IssueUpdates.Add(new IssueUpdate
+                {
+                    IssueId = member.Assignment.IssueId,
+                    CreatedBy = actorUserId,
+                    FromStatusId = currentStatus != null ? previousStatusId : null,
+                    ToStatusId = inProgressStatus.StatusId,
+                    Note = currentStatus != null
+                        ? $"Trang thai tu dong chuyen sang '{inProgressStatus.StatusName}' khi nhan vien chap nhan phan cong."
+                        : $"Nhan vien '{userFullName}' chap nhan phan cong. Trang thai: '{inProgressStatus.StatusName}'.",
+                    IsSystemGenerated = true,
+                    CreatedAt = now
+                });
+            }
+
+            // Cap nhat FirstRespondedAt neu chua co
+            if (issue.Sla != null && !issue.Sla.FirstRespondedAt.HasValue)
+            {
+                issue.Sla.FirstRespondedAt = now;
+                if (issue.Sla.FirstResponseDueAt.HasValue && now > issue.Sla.FirstResponseDueAt.Value)
+                {
+                    issue.Sla.IsFirstResponseBreached = true;
+                }
+            }
+
+            // Bat dau tinh gio SLA khi nhan vien chap nhan phan cong
+            if (issue.Sla != null && issue.Sla.ResolutionDueAt == default)
+            {
+                issue.Sla.ResolutionDueAt = now.AddMinutes(issue.Sla.ResolutionMinutes);
+                _context.IssueUpdates.Add(new IssueUpdate
+                {
+                    IssueId = member.Assignment.IssueId,
+                    CreatedBy = actorUserId,
+                    ToStatusId = issue.StatusId,
+                    Note = $"He thong bat dau tinh gio SLA. Han xu ly: {issue.Sla.ResolutionDueAt:dd/MM/yyyy HH:mm} ({issue.Sla.ResolutionMinutes} phut).",
+                    IsSystemGenerated = true,
+                    CreatedAt = now
+                });
+            }
+        }
+        else // Rejected
+        {
+            // Chuyen trang thai issue ve NEW
+            var newStatusEntity = await _context.IssueStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.StatusCode == "NEW", cancellationToken)
+                ?? throw new InvalidOperationException("Khong tim thay trang thai NEW.");
+
+            if (newStatusEntity != null)
+            {
+                var previousStatusId = issue.StatusId;
+                issue.StatusId = newStatusEntity.StatusId;
+                issue.ResolvedAt = null;
+                _context.IssueUpdates.Add(new IssueUpdate
+                {
+                    IssueId = member.Assignment.IssueId,
+                    CreatedBy = actorUserId,
+                    FromStatusId = previousStatusId,
+                    ToStatusId = newStatusEntity.StatusId,
+                    Note = $"Trang thai tu dong chuyen ve '{newStatusEntity.StatusName}' khi nhan vien tu choi phan cong." +
+                           (string.IsNullOrWhiteSpace(request.Note) ? "" : $" Ly do: {request.Note.Trim()}"),
+                    IsSystemGenerated = true,
+                    CreatedAt = now
+                });
+            }
+        }
+
+        // Lay trang thai hien tai cua issue de dam bao ToStatusId hop le
+        var currentStatusEntity = await _context.IssueStatuses
             .AsNoTracking()
-            .Where(i => i.IssueId == member.Assignment.IssueId)
-            .Select(i => i.StatusId)
-            .FirstAsync(cancellationToken);
+            .FirstOrDefaultAsync(s => s.StatusId == issue.StatusId, cancellationToken);
+
+        var validStatusId = currentStatusEntity?.StatusId
+            ?? throw new InvalidOperationException($"Trang thai issue khong hop le (StatusId={issue.StatusId}). Vui long kiem tra du lieu.");
 
         _context.IssueUpdates.Add(new IssueUpdate
         {
             IssueId = member.Assignment.IssueId,
             CreatedBy = actorUserId,
             Note = updateNote,
-            ToStatusId = currentIssueStatusId,
+            ToStatusId = validStatusId,
             IsSystemGenerated = false,
             CreatedAt = now
         });

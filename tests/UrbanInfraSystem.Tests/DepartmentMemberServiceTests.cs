@@ -47,7 +47,10 @@ public class DepartmentMemberServiceTests
         _userManagerMock = TestHelpers.CreateUserManagerMock();
         _logger = TestLogger.Create<DepartmentMemberService>();
 
-        _departmentMemberService = new DepartmentMemberService(_context, _userManagerMock.Object);
+        var currentUserMock = new Mock<ICurrentUserService>();
+        currentUserMock.Setup(x => x.UserId).Returns((string?)null);
+
+        _departmentMemberService = new DepartmentMemberService(_context, _userManagerMock.Object, currentUserMock.Object);
 
         SeedData();
     }

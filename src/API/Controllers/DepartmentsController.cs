@@ -109,4 +109,12 @@ public class DepartmentsController : ControllerBase
         }
         catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
     }
+
+    /// <summary>Lấy thông tin đơn vị của người dùng hiện tại (trưởng phòng/nhân viên).</summary>
+    [HttpGet("me/department"), Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentManager},{Roles.DepartmentStaff}")]
+    public async Task<ActionResult<DepartmentMemberResponse>> GetCurrentUserDepartment(CancellationToken cancellationToken)
+    {
+        var result = await _members.GetCurrentUserDepartmentAsync(cancellationToken);
+        return result is null ? NotFound(new { message = "Người dùng hiện tại không thuộc đơn vị nào." }) : Ok(result);
+    }
 }

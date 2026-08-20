@@ -31,7 +31,7 @@ public class SlaCheckBackgroundService : BackgroundService
 
     private static readonly string[] TERMINAL_STATUS_CODES = { "RESOLVED", "CLOSED", "REJECTED" };
     private const string SYSTEM_USER = "SYSTEM";
-    private const int REMINDER_INTERVAL_DAYS = 1;
+    private const int REMINDER_INTERVAL_MINUTES = 3;
 
     public SlaCheckBackgroundService(
         IServiceProvider serviceProvider,
@@ -97,21 +97,26 @@ public class SlaCheckBackgroundService : BackgroundService
             stoppingToken.ThrowIfCancellationRequested();
 
             var statusCode = sla.Issue?.Status?.StatusCode ?? "UNKNOWN";
-            var isNewStatus = string.Equals(statusCode, "NEW", StringComparison.OrdinalIgnoreCase);
+            var isNewOrAssigned = string.Equals(statusCode, "NEW", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(statusCode, "ASSIGNED", StringComparison.OrdinalIgnoreCase);
+            var isInProgress = string.Equals(statusCode, "IN_PROGRESS", StringComparison.OrdinalIgnoreCase);
 
             // Xác định các escalation types cần kiểm tra
             var escalationTypesToCheck = new List<EscalationType>();
 
-            if (isNewStatus)
+            if (isNewOrAssigned)
             {
-                // Trạng thái NEW: kiểm tra FirstResponseOverdue và ApproachResponseDeadline
+                // Case 1: NEW or ASSIGNED -> check FirstResponseOverdue + ApproachResponseDeadline
                 escalationTypesToCheck.Add(EscalationType.FirstResponseOverdue);
                 escalationTypesToCheck.Add(EscalationType.ApproachResponseDeadline);
+                Console.WriteLine("Checking FirstResponseOverdue and ApproachResponseDeadline");
             }
-            else
+            if (isInProgress)
             {
-                // Đã phản hồi: kiểm tra ResponseOverdue
+                // Case 2: IN_PROGRESS -> check ApproachResponseDeadline and ResponseOverdue
+                escalationTypesToCheck.Add(EscalationType.ApproachResponseDeadline);
                 escalationTypesToCheck.Add(EscalationType.ResponseOverdue);
+                Console.WriteLine("Checking ApproachResponseDeadline and ResponseOverdue");
             }
 
             foreach (var escalationType in escalationTypesToCheck)
@@ -163,7 +168,6 @@ public class SlaCheckBackgroundService : BackgroundService
         {
             return result;
         }
-
         // Lấy tất cả rules phù hợp với SLA policy và EscalationType
         var rules = await context.EscalationRules
             .AsNoTracking()
@@ -181,13 +185,15 @@ public class SlaCheckBackgroundService : BackgroundService
         foreach (var rule in rules)
         {
             // Kiểm tra xem rule có trigger không
-            // OverdueMinutes dương: trigger khi >= ngưỡng
-            // OverdueMinutes âm: trigger khi <= ngưỡng (đối với APPROACH - sắp đến hạn)
+            // FirstResponseOverdue / ResponseOverdue: trigger khi overdueMinutes >= ngưỡng (dương)
+            // ApproachResponseDeadline: trigger khi overdueMinutes >= ngưỡng âm (e.g. -30)
             bool shouldTrigger;
             if (escalationType == EscalationType.ApproachResponseDeadline)
             {
-                // OverdueMinutes âm, ví dụ -30 nghĩa là "30 phút trước deadline"
-                shouldTrigger = overdueMinutes <= rule.OverdueMinutes && overdueMinutes >= 0;
+                // overdueMinutes = minutes past FirstResponseDueAt (negative = before deadline)
+                // rule.OverdueMinutes = negative threshold (e.g. -30 = trigger 30 min before)
+                // Trigger when: we are at or past the warning window
+                shouldTrigger = overdueMinutes >= rule.OverdueMinutes;
             }
             else
             {
@@ -284,7 +290,6 @@ public class SlaCheckBackgroundService : BackgroundService
         {
             return int.MinValue; // Chưa quá hạn
         }
-
         return (int)Math.Floor((now - deadline).TotalMinutes);
     }
 
@@ -356,9 +361,9 @@ public class SlaCheckBackgroundService : BackgroundService
         {
             // Đã có event, kiểm tra thời gian để gửi reminder
             var lastUpdate = existingEvent.UpdatedAtUtc ?? existingEvent.TriggeredAt;
-            var daysSinceLastUpdate = (now - lastUpdate).TotalDays;
+            var minutesSinceLastUpdate = (now - lastUpdate).TotalMinutes;
 
-            if (daysSinceLastUpdate >= REMINDER_INTERVAL_DAYS)
+            if (minutesSinceLastUpdate >= REMINDER_INTERVAL_MINUTES)
             {
                 // Đã quá 1 ngày, gửi reminder và update UpdatedAt
                 await SendEscalationReminderAsync(context, sla, existingEvent, rule, overdueMinutes, escalationType, now, stoppingToken);
@@ -459,7 +464,7 @@ public class SlaCheckBackgroundService : BackgroundService
         }
 
         // Tạo notifications
-        await CreateNotificationsAsync(context, sla, rule, escalationEvent, publicCode, escalationType, overdueMinutes, now, stoppingToken);
+        await CreateNotificationsAsync(context, sla, rule, escalationEvent, eventDepartmentId, publicCode, escalationType, overdueMinutes, now, stoppingToken);
     }
 
     /// <summary>
@@ -484,8 +489,8 @@ public class SlaCheckBackgroundService : BackgroundService
         var publicCode = issue.PublicCode;
 
         _logger.LogWarning(
-            "[SLA REMINDER] Issue {IssueId} ({PublicCode}) - Type: {EscalationType}, Level: {Level}, Reminder after 1 day, OverdueMinutes: {OverdueMinutes}",
-            sla.IssueId, publicCode, escalationType, rule.EscalationLevel, overdueMinutes);
+            "[SLA REMINDER] Issue {IssueId} ({PublicCode}) - Type: {EscalationType}, Level: {Level}, Reminder after {Interval} minutes, OverdueMinutes: {OverdueMinutes}",
+            sla.IssueId, publicCode, escalationType, rule.EscalationLevel, REMINDER_INTERVAL_MINUTES, overdueMinutes);
 
         // Cập nhật UpdatedAtUtc của EscalationEvent
         existingEvent.UpdatedAtUtc = now;
@@ -493,7 +498,7 @@ public class SlaCheckBackgroundService : BackgroundService
         await context.SaveChangesAsync(stoppingToken);
 
         // Tạo reminder notifications
-        await CreateReminderNotificationsAsync(context, sla, rule, existingEvent, publicCode, escalationType, overdueMinutes, now, stoppingToken);
+        await CreateReminderNotificationsAsync(context, sla, rule, existingEvent, existingEvent.TargetDepartmentId, publicCode, escalationType, overdueMinutes, now, stoppingToken);
     }
 
     /// <summary>
@@ -513,10 +518,21 @@ public class SlaCheckBackgroundService : BackgroundService
 
         if (issue == null) return;
 
+        // Lấy reporter ID hoặc admin đầu tiên làm CreatedBy thay vì dùng "SYSTEM"
+        var createdBy = issue.ReporterId;
+        if (string.IsNullOrEmpty(createdBy))
+        {
+            var adminUser = await context.UserRoles
+                .Where(ur => context.Roles.Any(r => r.Name == Roles.Admin))
+                .Select(ur => ur.UserId)
+                .FirstOrDefaultAsync(stoppingToken);
+            createdBy = adminUser;
+        }
+
         var issueUpdate = new IssueUpdate
         {
             IssueId = issueId,
-            CreatedBy = SYSTEM_USER,
+            CreatedBy = createdBy ?? "SYSTEM",
             FromStatusId = issue.StatusId,
             ToStatusId = issue.StatusId,
             Note = note,
@@ -531,12 +547,19 @@ public class SlaCheckBackgroundService : BackgroundService
 
     /// <summary>
     /// Tạo notifications cho escalation event mới.
+    /// Quy tắc gửi notification dựa trên EscalationEvent.TargetDepartmentId:
+    /// - Có TargetDepartmentId: chỉ gửi cho manager của department đó (leo thang báo cáo lên cấp trên)
+    /// - Không có TargetDepartmentId: gửi theo rule.TargetRoleName:
+    ///   - DepartmentStaff: gửi cho các staff đã được assign task của issue
+    ///   - DepartmentManager: gửi cho manager của department phụ trách issue
+    ///   - Admin: gửi cho tất cả admin
     /// </summary>
     private async Task CreateNotificationsAsync(
         AppDbContext context,
         IssueSla sla,
         EscalationRule rule,
         EscalationEvent escalationEvent,
+        int? eventDepartmentId,
         string publicCode,
         EscalationType escalationType,
         int overdueMinutes,
@@ -545,25 +568,20 @@ public class SlaCheckBackgroundService : BackgroundService
     {
         var targetUserIds = new HashSet<string>();
 
-        // Thêm reporter
-        var reporterId = await context.Issues
-            .Where(i => i.IssueId == sla.IssueId)
-            .Select(i => i.ReporterId)
-            .FirstOrDefaultAsync(stoppingToken);
-        if (!string.IsNullOrWhiteSpace(reporterId))
-        {
-            targetUserIds.Add(reporterId);
-        }
-
         // Lấy department ID của issue hiện tại từ IssueAssignment
         var issueDepartmentId = await GetIssueDepartmentIdAsync(context, sla.IssueId, stoppingToken);
 
-        // Resolve target users dựa trên TargetRoleName và TargetDepartmentId
-        var resolvedUserIds = await ResolveTargetUsersAsync(context, rule, issueDepartmentId, stoppingToken);
+        // Resolve target users dựa trên EscalationEvent.TargetDepartmentId và rule.TargetRoleName
+        var resolvedUserIds = await ResolveTargetUsersAsync(context, rule, sla.IssueId, eventDepartmentId, issueDepartmentId, stoppingToken);
         foreach (var userId in resolvedUserIds)
         {
             targetUserIds.Add(userId);
         }
+
+        _logger.LogInformation(
+            "[SLA NOTIFICATION] IssueId={IssueId}, EscalationType={EscalationType}, Level={Level}, RuleTargetRole={TargetRole}, ResolvedUserIds=[{UserIds}], Total={Count}",
+            sla.IssueId, escalationType, rule.EscalationLevel, rule.TargetRoleName,
+            string.Join(", ", resolvedUserIds), resolvedUserIds.Count);
 
         // Xây dựng tiêu đề và nội dung notification
         var (title, message) = BuildNotificationContent(publicCode, escalationType, rule.EscalationLevel, overdueMinutes);
@@ -602,17 +620,34 @@ public class SlaCheckBackgroundService : BackgroundService
         if (targetUserIds.Count > 0)
         {
             await context.SaveChangesAsync(stoppingToken);
+            _logger.LogInformation(
+                "[SLA NOTIFICATION] Saved {Count} notification(s) for IssueId={IssueId}, Type={EscalationType}, Level={Level}",
+                targetUserIds.Count, sla.IssueId, escalationType, rule.EscalationLevel);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "[SLA NOTIFICATION] No target users found for IssueId={IssueId}, Type={EscalationType}, Level={Level}, RuleTargetRole={TargetRole}",
+                sla.IssueId, escalationType, rule.EscalationLevel, rule.TargetRoleName);
         }
     }
 
     /// <summary>
-    /// Resolve users dựa trên TargetRoleName và TargetDepartmentId.
-    /// - Admin: gửi đến tất cả Admin users
-    /// - DepartmentManager: gửi đến manager của TargetDepartmentId (hoặc department hiện tại của issue nếu TargetDepartmentId = null)
+    /// Resolve users dựa trên EscalationEvent.TargetDepartmentId và rule.TargetRoleName.
+    /// 
+    /// Nếu EscalationEvent có TargetDepartmentId (leo thang báo cáo):
+    /// - Chỉ gửi cho manager của TargetDepartmentId đó
+    /// 
+    /// Nếu EscalationEvent không có TargetDepartmentId:
+    /// - DepartmentStaff: gửi cho các staff đã được assign task của issue (IssueAssignment)
+    /// - DepartmentManager: gửi cho manager của department phụ trách issue
+    /// - Admin: gửi cho tất cả admin
     /// </summary>
     private async Task<List<string>> ResolveTargetUsersAsync(
         AppDbContext context,
         EscalationRule rule,
+        long issueId,
+        int? eventDepartmentId,
         int? issueDepartmentId,
         CancellationToken stoppingToken)
     {
@@ -623,59 +658,91 @@ public class SlaCheckBackgroundService : BackgroundService
             return userIds;
         }
 
+        // Nếu escalation event có TargetDepartmentId -> chỉ gửi cho manager của department đó (leo thang)
+        if (eventDepartmentId.HasValue)
+        {
+            var managerUserIds = await context.UserRoles
+                .Where(ur => context.Roles.Any(r => r.Id == ur.RoleId && r.Name == Roles.DepartmentManager))
+                .Select(ur => ur.UserId)
+                .ToListAsync(stoppingToken);
+
+            var deptManagers = await context.DepartmentMembers
+                .Where(dm => dm.DepartmentId == eventDepartmentId.Value 
+                         && dm.IsActive 
+                         && managerUserIds.Contains(dm.UserId))
+                .Select(dm => dm.UserId)
+                .ToListAsync(stoppingToken);
+            userIds.AddRange(deptManagers);
+            _logger.LogInformation(
+                "[ResolveTargetUsers] IssueId={IssueId}, EventDepartmentId={DeptId}, Role=DepartmentManager(Escalated), ResolvedCount={Count}",
+                issueId, eventDepartmentId, userIds.Count);
+            return userIds.Distinct().ToList();
+        }
+
+        // Không có TargetDepartmentId -> gửi theo rule.TargetRoleName
         switch (rule.TargetRoleName)
         {
             case Roles.Admin:
-                // Lấy tất cả users có role Admin
                 var adminUsers = await context.UserRoles
                     .Where(ur => context.Roles.Any(r => r.Id == ur.RoleId && r.Name == Roles.Admin))
                     .Select(ur => ur.UserId)
                     .ToListAsync(stoppingToken);
                 userIds.AddRange(adminUsers);
+                _logger.LogInformation(
+                    "[ResolveTargetUsers] IssueId={IssueId}, EventDepartmentId={DeptId}, Role=Admin, ResolvedUserIds=[{UserIds}], Count={Count}",
+                    issueId, eventDepartmentId, string.Join(", ", adminUsers), adminUsers.Count);
                 break;
 
             case Roles.DepartmentManager:
-                // Lấy department ID để query
-                var departmentId = rule.TargetDepartmentId ?? issueDepartmentId;
-                if (departmentId.HasValue)
+                if (issueDepartmentId.HasValue)
                 {
-                    // Lấy tất cả user IDs có role DepartmentManager
                     var managerUserIds = await context.UserRoles
                         .Where(ur => context.Roles.Any(r => r.Id == ur.RoleId && r.Name == Roles.DepartmentManager))
                         .Select(ur => ur.UserId)
                         .ToListAsync(stoppingToken);
 
-                    // Lọc theo department của user
                     var deptManagers = await context.DepartmentMembers
-                        .Where(dm => dm.DepartmentId == departmentId.Value 
+                        .Where(dm => dm.DepartmentId == issueDepartmentId.Value 
                                  && dm.IsActive 
                                  && managerUserIds.Contains(dm.UserId))
                         .Select(dm => dm.UserId)
                         .ToListAsync(stoppingToken);
                     userIds.AddRange(deptManagers);
+                    _logger.LogInformation(
+                        "[ResolveTargetUsers] IssueId={IssueId}, IssueDepartmentId={DeptId}, Role=DepartmentManager, ResolvedUserIds=[{UserIds}], Count={Count}",
+                        issueId, issueDepartmentId, string.Join(", ", deptManagers), deptManagers.Count);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "[ResolveTargetUsers] IssueId={IssueId}, Role=DepartmentManager, NoIssueDepartmentId",
+                        issueId);
                 }
                 break;
 
             case Roles.DepartmentStaff:
-                // Lấy department ID để query
-                var staffDeptId = rule.TargetDepartmentId ?? issueDepartmentId;
-                if (staffDeptId.HasValue)
-                {
-                    var staffUsers = await context.DepartmentMembers
-                        .Where(dm => dm.DepartmentId == staffDeptId.Value && dm.IsActive)
-                        .Select(dm => dm.UserId)
-                        .ToListAsync(stoppingToken);
-                    userIds.AddRange(staffUsers);
-                }
+                var acceptedStaff = await context.IssueAssignmentMembers
+                    .Include(m => m.Assignment)
+                    .Where(m => m.Assignment.IssueId == issueId
+                             && m.Assignment.IsCurrent
+                             && m.Status == AssignmentMemberStatus.Accepted)
+                    .Select(m => m.UserId)
+                    .ToListAsync(stoppingToken);
+                userIds.AddRange(acceptedStaff);
+                _logger.LogInformation(
+                    "[ResolveTargetUsers] IssueId={IssueId}, Role=DepartmentStaff(Accepted), ResolvedUserIds=[{UserIds}], Count={Count}",
+                    issueId, string.Join(", ", acceptedStaff), acceptedStaff.Count);
                 break;
 
             default:
-                // Nếu không match, thử lấy users theo role
                 var roleUsers = await context.UserRoles
                     .Where(ur => context.Roles.Any(r => r.Id == ur.RoleId && r.Name == rule.TargetRoleName))
                     .Select(ur => ur.UserId)
                     .ToListAsync(stoppingToken);
                 userIds.AddRange(roleUsers);
+                _logger.LogInformation(
+                    "[ResolveTargetUsers] IssueId={IssueId}, Role={RoleName}, ResolvedUserIds=[{UserIds}], Count={Count}",
+                    issueId, rule.TargetRoleName, string.Join(", ", roleUsers), roleUsers.Count);
                 break;
         }
 
@@ -699,13 +766,14 @@ public class SlaCheckBackgroundService : BackgroundService
     }
 
     /// <summary>
-    /// Tạo reminder notifications.
+    /// Tạo reminder notifications. Cũng sử dụng EscalationEvent.TargetDepartmentId để xác định người nhận.
     /// </summary>
     private async Task CreateReminderNotificationsAsync(
         AppDbContext context,
         IssueSla sla,
         EscalationRule rule,
         EscalationEvent escalationEvent,
+        int? eventDepartmentId,
         string publicCode,
         EscalationType escalationType,
         int overdueMinutes,
@@ -714,31 +782,26 @@ public class SlaCheckBackgroundService : BackgroundService
     {
         var targetUserIds = new HashSet<string>();
 
-        // Thêm reporter
-        var reporterId = await context.Issues
-            .Where(i => i.IssueId == sla.IssueId)
-            .Select(i => i.ReporterId)
-            .FirstOrDefaultAsync(stoppingToken);
-        if (!string.IsNullOrWhiteSpace(reporterId))
-        {
-            targetUserIds.Add(reporterId);
-        }
-
         // Lấy department ID của issue từ IssueAssignment
         var issueDepartmentId = await GetIssueDepartmentIdAsync(context, sla.IssueId, stoppingToken);
 
-        // Resolve target users
-        var resolvedUserIds = await ResolveTargetUsersAsync(context, rule, issueDepartmentId, stoppingToken);
+        // Resolve target users sử dụng cùng logic với notification mới
+        var resolvedUserIds = await ResolveTargetUsersAsync(context, rule, sla.IssueId, eventDepartmentId, issueDepartmentId, stoppingToken);
         foreach (var userId in resolvedUserIds)
         {
             targetUserIds.Add(userId);
         }
 
+        _logger.LogInformation(
+            "[SLA REMINDER] IssueId={IssueId}, EscalationType={EscalationType}, Level={Level}, RuleTargetRole={TargetRole}, ResolvedUserIds=[{UserIds}], Total={Count}",
+            sla.IssueId, escalationType, rule.EscalationLevel, rule.TargetRoleName,
+            string.Join(", ", resolvedUserIds), resolvedUserIds.Count);
+
         // Xây dựng tiêu đề reminder
         var escalationTypeText = GetEscalationTypeText(escalationType, overdueMinutes);
-        var title = $"[NHẮC NHỞ] Sự cố {publicCode}";
-        var message = $"Sự cố {publicCode} đã được escalation lần 2 do vẫn chưa được xử lý sau 1 ngày. "
-                    + $"{escalationTypeText}. Mức {rule.EscalationLevel}.";
+        var title = $"[NHẮC NHỞ] Sự cố {publicCode} - Mức {rule.EscalationLevel}";
+        var message = $"Sự cố {publicCode} ({escalationTypeText}) vẫn chưa được xử lý. "
+                    + $"Mức {rule.EscalationLevel} - Yêu cầu kiểm tra và can thiệp.";
 
         foreach (var userId in targetUserIds)
         {
@@ -758,6 +821,15 @@ public class SlaCheckBackgroundService : BackgroundService
         if (targetUserIds.Count > 0)
         {
             await context.SaveChangesAsync(stoppingToken);
+            _logger.LogInformation(
+                "[SLA REMINDER] Saved {Count} reminder notification(s) for IssueId={IssueId}, Type={EscalationType}",
+                targetUserIds.Count, sla.IssueId, escalationType);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "[SLA REMINDER] No target users found for IssueId={IssueId}, Type={EscalationType}, Level={Level}, RuleTargetRole={TargetRole}",
+                sla.IssueId, escalationType, rule.EscalationLevel, rule.TargetRoleName);
         }
     }
 

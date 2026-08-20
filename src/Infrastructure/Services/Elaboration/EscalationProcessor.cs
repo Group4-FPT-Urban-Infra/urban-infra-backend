@@ -1,12 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using UrbanInfraSystem.Infrastructure.Hubs;
 using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Services.Elaboration;
@@ -19,13 +16,11 @@ public class EscalationProcessor
 {
     private readonly AppDbContext _db;
     private readonly ILogger<EscalationProcessor> _logger;
-    private readonly IHubContext<NotificationHub>? _hubContext;
 
-    public EscalationProcessor(AppDbContext db, ILogger<EscalationProcessor> logger, IHubContext<NotificationHub>? hubContext = null)
+    public EscalationProcessor(AppDbContext db, ILogger<EscalationProcessor> logger)
     {
         _db = db;
         _logger = logger;
-        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -54,10 +49,13 @@ public class EscalationProcessor
 
             var overdueMinutes = (int)Math.Floor((now - sla.ResolutionDueAt).TotalMinutes);
 
-            // get active rules for SLA policy
+            // Only check ResponseOverdue rules here (based on ResolutionDueAt).
+            // FirstResponseOverdue and ApproachResponseDeadline are handled by SlaCheckBackgroundService.
             var rules = await _db.EscalationRules
                 .AsNoTracking()
-                .Where(r => r.SlaPolicyId == sla.SlaPolicyId && r.IsActive)
+                .Where(r => r.SlaPolicyId == sla.SlaPolicyId
+                         && r.IsActive
+                         && r.EscalationType == Domain.Enums.EscalationType.ResponseOverdue)
                 .OrderBy(r => r.EscalationLevel)
                 .ToListAsync(cancellationToken);
 
@@ -93,72 +91,9 @@ public class EscalationProcessor
                 {
                     await _db.SaveChangesAsync(cancellationToken);
                     created++;
-
-                    // Create automatic Notifications for Escalation_Event
-                    var targetUserIds = new List<string>();
-                    if (!string.IsNullOrWhiteSpace(ev.TargetUserId))
-                    {
-                        targetUserIds.Add(ev.TargetUserId);
-                    }
-                    if (rule.TargetDepartmentId.HasValue)
-                    {
-                        var deptUserIds = await _db.DepartmentMembers
-                            .Where(dm => dm.DepartmentId == rule.TargetDepartmentId.Value && dm.IsActive)
-                            .Select(dm => dm.UserId)
-                            .ToListAsync(cancellationToken);
-                        targetUserIds.AddRange(deptUserIds);
-                    }
-                    var issueReporterId = await _db.Issues
-                        .Where(i => i.IssueId == sla.IssueId)
-                        .Select(i => i.ReporterId)
-                        .FirstOrDefaultAsync(cancellationToken);
-                    if (!string.IsNullOrWhiteSpace(issueReporterId))
-                    {
-                        targetUserIds.Add(issueReporterId);
-                    }
-
-                    var distinctUserIds = targetUserIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
-                    foreach (var targetUserId in distinctUserIds)
-                    {
-                        _db.Notifications.Add(new Domain.Entities.Notification
-                        {
-                            UserId = targetUserId,
-                            Title = $"Cảnh báo leo thang sự cố #{sla.IssueId}",
-                            Message = $"Sự cố #{sla.IssueId} đã bị leo thang do quá hạn SLA (Mức {rule.EscalationLevel}).",
-                            NotificationType = "ESCALATION",
-                            IssueId = sla.IssueId,
-                            IsRead = false,
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
-                    if (distinctUserIds.Any())
-                    {
-                        await _db.SaveChangesAsync(cancellationToken);
-
-                        if (_hubContext != null)
-                        {
-                            foreach (var targetUserId in distinctUserIds)
-                            {
-                                try
-                                {
-                                    await _hubContext.Clients.Group(targetUserId).SendAsync("ReceiveNotification", new
-                                    {
-                                        userId = targetUserId,
-                                        title = $"Cảnh báo leo thang sự cố #{sla.IssueId}",
-                                        message = $"Sự cố #{sla.IssueId} đã bị leo thang do quá hạn SLA (Mức {rule.EscalationLevel}).",
-                                        notificationType = "ESCALATION",
-                                        issueId = sla.IssueId,
-                                        isRead = false,
-                                        createdAt = DateTime.UtcNow
-                                    }, cancellationToken: cancellationToken);
-                                }
-                                catch
-                                {
-                                    // silence hub broadcast error
-                                }
-                            }
-                        }
-                    }
+                    _logger.LogInformation(
+                        "[EscalationProcessor] Created EscalationEvent: IssueId={IssueId}, RuleId={RuleId}, Type={EscalationType}, Level={Level}, TargetDept={TargetDeptId}",
+                        sla.IssueId, rule.Id, rule.EscalationType, rule.EscalationLevel, rule.TargetDepartmentId);
                 }
                 catch (DbUpdateException ex)
                 {
