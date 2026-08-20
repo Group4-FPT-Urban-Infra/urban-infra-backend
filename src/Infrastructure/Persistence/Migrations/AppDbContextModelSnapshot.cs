@@ -897,12 +897,10 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
-                        .IsUnicode(true)
                         .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("IconUrl")
                         .HasMaxLength(1000)
-                        .IsUnicode(true)
                         .HasColumnType("nvarchar(1000)");
 
                     b.Property<bool>("IsActive")
@@ -922,7 +920,6 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.Property<string>("TypeName")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .IsUnicode(true)
                         .HasColumnType("nvarchar(150)");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
@@ -1252,7 +1249,6 @@ namespace UrbanInfraSystem.Infrastructure.Persistence.Migrations
                     b.Property<string>("IssueTypeName")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .IsUnicode(true)
                         .HasColumnType("nvarchar(150)");
 
                     b.HasKey("ReportId", "IssueTypeId");

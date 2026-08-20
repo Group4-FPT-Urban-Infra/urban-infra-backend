@@ -275,6 +275,32 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
             }
         }
 
+        // Neu hien tai la trang thai NEW, chuyen sang ASSIGNED
+        var currentStatus = await _context.IssueStatuses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.StatusId == issue.StatusId, cancellationToken);
+
+        var assignedStatus = await _context.IssueStatuses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.StatusCode == "ASSIGNED", cancellationToken)
+            ?? throw new InvalidOperationException("Khong tim thay trang thai ASSIGNED.");
+
+        if (currentStatus != null && currentStatus.StatusCode == "NEW" && assignedStatus != null)
+        {
+            var previousStatusId = issue.StatusId;
+            issue.StatusId = assignedStatus.StatusId;
+            _context.IssueUpdates.Add(new IssueUpdate
+            {
+                IssueId = issueId,
+                CreatedBy = assignedBy,
+                FromStatusId = previousStatusId,
+                ToStatusId = assignedStatus.StatusId,
+                Note = $"Trang thai tu dong chuyen sang '{assignedStatus.StatusName}' khi phan cong nhan vien.",
+                IsSystemGenerated = true,
+                CreatedAt = now
+            });
+        }
+
         _context.IssueUpdates.Add(new IssueUpdate
         {
             IssueId = issueId,

@@ -45,6 +45,18 @@ public class ReRouteRequestsController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy yêu cầu chuyển tiếp đang chờ duyệt của một sự cố cụ thể (dành cho đơn vị đang giữ sự cố).
+    /// </summary>
+    [HttpGet("issue/{issueId:long}")]
+    public async Task<ActionResult<ReRouteRequestDto>> GetPendingRequestByIssueId(
+        [FromRoute] long issueId,
+        CancellationToken cancellationToken)
+    {
+        var request = await _reRouteRequestService.GetPendingRequestByIssueIdAsync(issueId, cancellationToken);
+        return Ok(request);
+    }
+
+    /// <summary>
     /// Chấp nhận yêu cầu chuyển tiếp.
     /// </summary>
     [HttpPost("{id:long}/accept")]
@@ -83,6 +95,26 @@ public class ReRouteRequestsController : ControllerBase
         }
         catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, new { message = ex.Message }); }
+    }
+
+    /// <summary>
+    /// Hủy yêu cầu chuyển tiếp (chỉ người tạo mới được hủy).
+    /// </summary>
+    [HttpPost("{id:long}/cancel")]
+    public async Task<ActionResult> CancelRequest(
+        [FromRoute] long id,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId)) return BadRequest(new { message = "Vui lòng đăng nhập." });
+
+        try
+        {
+            await _reRouteRequestService.CancelRequestAsync(id, userId, cancellationToken);
+            return Ok(new { message = "Đã hủy yêu cầu chuyển tiếp." });
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
         catch (UnauthorizedAccessException ex) { return StatusCode(403, new { message = ex.Message }); }
     }
 }

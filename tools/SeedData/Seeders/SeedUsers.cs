@@ -85,6 +85,7 @@ public class SeedUsers
         }
 
         await _userManager.AddToRoleAsync(admin, "Admin");
+        await _userManager.AddToRoleAsync(admin, "Citizen");
         _logger.LogInformation("Created admin user: {Email}", adminEmail);
     }
 
@@ -171,6 +172,7 @@ public class SeedUsers
                     if (result.Succeeded)
                     {
                         await _userManager.AddToRoleAsync(manager, "DepartmentManager");
+                        await _userManager.AddToRoleAsync(manager, "Citizen");
 
                         _db.DepartmentMembers.Add(new DepartmentMember
                         {
@@ -207,6 +209,7 @@ public class SeedUsers
                 if (result.Succeeded)
                 {
                     await _userManager.AddToRoleAsync(manager, "DepartmentManager");
+                    await _userManager.AddToRoleAsync(manager, "Citizen");
 
                     _db.DepartmentMembers.Add(new DepartmentMember
                     {
@@ -252,6 +255,7 @@ public class SeedUsers
                 }
 
                 await _userManager.AddToRoleAsync(staff, "DepartmentStaff");
+                await _userManager.AddToRoleAsync(staff, "Citizen");
 
                 _db.DepartmentMembers.Add(new DepartmentMember
                 {

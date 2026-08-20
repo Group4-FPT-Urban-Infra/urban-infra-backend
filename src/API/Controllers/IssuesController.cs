@@ -4,11 +4,13 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using UrbanInfraSystem.Application.DTOs.IssueAssignmentMembers;
 using UrbanInfraSystem.Application.DTOs.IssueAssignments;
 using UrbanInfraSystem.Application.DTOs.Issues;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Enums;
+using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.API.Controllers;
 
@@ -25,19 +27,22 @@ public class IssuesController : ControllerBase
     private readonly IIssueAssignmentService _assignmentService;
     private readonly IIssueAssignmentMemberService _memberService;
     private readonly IIssueUpvoteService _upvoteService;
+    private readonly AppDbContext _db;
 
     public IssuesController(
         IIssueService issueService,
         ICurrentUserService currentUser,
         IIssueAssignmentService assignmentService,
         IIssueAssignmentMemberService memberService,
-        IIssueUpvoteService upvoteService)
+        IIssueUpvoteService upvoteService,
+        AppDbContext db)
     {
         _issueService = issueService;
         _currentUser = currentUser;
         _assignmentService = assignmentService;
         _memberService = memberService;
         _upvoteService = upvoteService;
+        _db = db;
     }
 
     /// <summary>Toggle upvote cho một báo cáo sự cố (thêm nếu chưa upvote, bỏ nếu đã upvote).</summary>
@@ -424,5 +429,105 @@ public class IssuesController : ControllerBase
         {
             return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = ex.Message });
         }
+    }
+
+    /// <summary>Công dân yêu cầu mở lại sự cố đã resolved/closed.</summary>
+    [HttpPost("{issueId:long}/request-reopen")]
+    [Authorize(Roles = Roles.Citizen)]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(ApiResponse<IssueDetailResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IssueDetailResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<IssueDetailResponse>>> RequestReopen(
+        [FromRoute] long issueId,
+        [FromForm] RequestReopenIssueRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = "Vui lòng đăng nhập để thực hiện thao tác này."
+            });
+        }
+
+        var result = await _issueService.RequestReopenIssueAsync(
+            issueId, request.Note ?? string.Empty, request.Images, userId, cancellationToken);
+
+        if (!result.Success)
+        {
+            if (result.Message?.Contains("Không tìm thấy") == true)
+                return NotFound(result);
+            if (result.Message?.Contains("quyền") == true)
+                return StatusCode(StatusCodes.Status403Forbidden, result);
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>Department Manager duyệt hoặc từ chối yêu cầu mở lại sự cố.</summary>
+    [HttpPost("{issueId:long}/review-reopen")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.DepartmentManager}")]
+    [ProducesResponseType(typeof(ApiResponse<IssueDetailResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IssueDetailResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<IssueDetailResponse>>> ReviewReopen(
+        [FromRoute] long issueId,
+        [FromBody] ReviewReopenIssueRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = "Vui lòng đăng nhập để thực hiện thao tác này."
+            });
+        }
+
+        if (_currentUser.IsInRole(Roles.DepartmentManager))
+        {
+            var deptClaim = User.FindFirst("department_id")?.Value;
+            if (!int.TryParse(deptClaim, out var deptId) || deptId == 0)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IssueDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không xác định được đơn vị quản lý của bạn."
+                });
+            }
+
+            var isInDept = await _db.IssueAssignments
+                .AnyAsync(a => a.IssueId == issueId && a.DepartmentId == deptId && a.IsCurrent, cancellationToken);
+
+            if (!isInDept)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IssueDetailResponse>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền duyệt yêu cầu cho sự cố này."
+                });
+            }
+        }
+
+        var result = await _issueService.ReviewReopenIssueAsync(
+            issueId, request.Approved, request.Note, userId, cancellationToken);
+
+        if (!result.Success)
+        {
+            if (result.Message?.Contains("Không tìm thấy") == true)
+                return NotFound(result);
+            return BadRequest(result);
+        }
+
+        return Ok(result);
     }
 }

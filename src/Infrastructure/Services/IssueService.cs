@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -66,7 +67,7 @@ public class IssueService : IIssueService
         };
     }
 
-    // â”€â”€â”€ Helper: tÃ­nh KpiItem tá»« giÃ¡ trá»‹ hiá»‡n táº¡i vÃ  ká»³ trÆ°á»›c â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Helper: tính KpiItem từ giá trị hiện tại và kỳ trước ───────────────────
     private static KpiItem BuildKpiItem(int current, int previous)
     {
         double? trendPercent = null;
@@ -94,37 +95,37 @@ public class IssueService : IIssueService
     public async Task<ApiResponse<AdminKpiResponse>> GetAdminKpiAsync(
         CancellationToken cancellationToken = default)
     {
-        // â”€â”€ Má»‘c thá»i gian â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Mốc thời gian ──────────────────────────────────────────────────
         var now = DateTime.UtcNow;
 
-        // Tuáº§n nÃ y: tá»« thá»© Hai (ISO) Ä‘áº¿n nay
+        // Tuần này: từ thứ Hai (ISO) đến nay
         var daysFromMonday = ((int)now.DayOfWeek + 6) % 7; // Mon = 0
         var thisWeekStart = now.Date.AddDays(-daysFromMonday);
         var lastWeekStart = thisWeekStart.AddDays(-7);
         var lastWeekEnd   = thisWeekStart;
 
-        // HÃ´m nay & hÃ´m qua
+        // Hôm nay & hôm qua
         var todayStart     = now.Date;
         var yesterdayStart = todayStart.AddDays(-1);
 
         var resolvedCodes = new[] { "RESOLVED", "CLOSED", "REJECTED" };
 
-        // â”€â”€ 1. Total Users (IsActive = true) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── 1. Total Users (IsActive = true) ────────────────────────────────
         var totalUsersNow  = await _context.Users.CountAsync(u => u.IsActive, cancellationToken);
-        // Proxy cho "tuáº§n trÆ°á»›c": user táº¡o trÆ°á»›c tuáº§n nÃ y (Ä‘Ã¢y lÃ  con sá»‘ cÃ³ tÃ­nh á»•n Ä‘á»‹nh hÆ¡n)
+        // Proxy cho "tuần trước": user tạo trước tuần này (đây là con số có tính ổn định hơn)
         var totalUsersPrev = await _context.Users
             .CountAsync(u => u.IsActive && u.CreatedAtUtc < thisWeekStart, cancellationToken);
-        var totalUsersCurrent = totalUsersNow; // all active users lÃ  hiá»‡n táº¡i
-        // Trend: user má»›i tuáº§n nÃ y vs tuáº§n trÆ°á»›c
+        var totalUsersCurrent = totalUsersNow; // all active users là hiện tại
+        // Trend: user mới tuần này vs tuần trước
         var newUsersThisWeek = await _context.Users
             .CountAsync(u => u.CreatedAtUtc >= thisWeekStart, cancellationToken);
         var newUsersLastWeek = await _context.Users
             .CountAsync(u => u.CreatedAtUtc >= lastWeekStart && u.CreatedAtUtc < lastWeekEnd, cancellationToken);
 
-        // â”€â”€ 2. Open Incidents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── 2. Open Incidents ───────────────────────────────────────────────
         var openNow = await _context.Issues
             .CountAsync(i => !i.IsArchived && !resolvedCodes.Contains(i.Status.StatusCode), cancellationToken);
-        // Tuáº§n trÆ°á»›c: sá»± cá»‘ Ä‘ang má»Ÿ táº¡i thá»i Ä‘iá»ƒm cuá»‘i tuáº§n trÆ°á»›c (gáº§n Ä‘Ãºng báº±ng cÃ¡ch Ä‘áº¿m má»Ÿ trÆ°á»›c lastWeekEnd & chÆ°a resolved hoáº·c resolved sau lastWeekEnd)
+        // Tuần trước: sự cố đang mở tại thời điểm cuối tuần trước (gần đúng bằng cách đếm mở trước lastWeekEnd & chưa resolved hoặc resolved sau lastWeekEnd)
         var openLastWeek = await _context.Issues
             .CountAsync(i => !i.IsArchived
                 && i.ReportedAt < lastWeekEnd
@@ -132,25 +133,25 @@ public class IssueService : IIssueService
                     || (i.ResolvedAt.HasValue && i.ResolvedAt >= lastWeekEnd)),
             cancellationToken);
 
-        // â”€â”€ 3. Active Departments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── 3. Active Departments ─────────────────────────────────────────────
         var deptNow  = await _context.Departments.CountAsync(d => d.IsActive, cancellationToken);
         var deptPrev = await _context.Departments
             .CountAsync(d => d.IsActive && d.CreatedAt < thisWeekStart, cancellationToken);
 
-        // â”€â”€ 4. Resolved This Week â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── 4. Resolved This Week ────────────────────────────────────────────
         var resolvedThisWeek = await _context.Issues
             .CountAsync(i => !i.IsArchived && i.ResolvedAt.HasValue && i.ResolvedAt >= thisWeekStart, cancellationToken);
         var resolvedLastWeek = await _context.Issues
             .CountAsync(i => !i.IsArchived && i.ResolvedAt.HasValue
                 && i.ResolvedAt >= lastWeekStart && i.ResolvedAt < lastWeekEnd, cancellationToken);
 
-        // â”€â”€ 5. New Today (vs hÃ´m qua) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── 5. New Today (vs hôm qua) ───────────────────────────────────────
         var newToday     = await _context.Issues
             .CountAsync(i => !i.IsArchived && i.ReportedAt >= todayStart, cancellationToken);
         var newYesterday = await _context.Issues
             .CountAsync(i => !i.IsArchived && i.ReportedAt >= yesterdayStart && i.ReportedAt < todayStart, cancellationToken);
 
-        // â”€â”€ 6. Critical Incidents (open + priority CRITICAL) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── 6. Critical Incidents (open + priority CRITICAL) ──────────────────
         var criticalNow = await _context.Issues
             .CountAsync(i => !i.IsArchived
                 && !resolvedCodes.Contains(i.Status.StatusCode)
@@ -163,7 +164,7 @@ public class IssueService : IIssueService
                     || (i.ResolvedAt.HasValue && i.ResolvedAt >= lastWeekEnd)),
             cancellationToken);
 
-        // â”€â”€ Build response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Build response ──────────────────────────────────────────────────
         return new ApiResponse<AdminKpiResponse>
         {
             Success = true,
@@ -188,13 +189,13 @@ public class IssueService : IIssueService
 
         switch (period.Trim())
         {
-            // â”€â”€ ThisWeek: 7 ngÃ y (Mon â†’ Sun cá»§a tuáº§n hiá»‡n táº¡i) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── ThisWeek: 7 ngày (Mon → Sun của tuần hiện tại) ───────────────
             case "ThisWeek":
             {
                 var daysFromMonday = ((int)now.DayOfWeek + 6) % 7;
                 var weekStart = now.Date.AddDays(-daysFromMonday);
 
-                // Group theo DayOfWeek (0=Sun,1=Mon,...6=Sat) trong pháº¡m vi tuáº§n
+                // Group theo DayOfWeek (0=Sun,1=Mon,...6=Sat) trong phạm vi tuần
                 var raw = await _context.Issues
                     .Where(i => !i.IsArchived && i.ReportedAt >= weekStart && i.ReportedAt < weekStart.AddDays(7))
                     .GroupBy(i => i.ReportedAt.Date)
@@ -214,7 +215,7 @@ public class IssueService : IIssueService
                 break;
             }
 
-            // â”€â”€ ThisMonth: tá»«ng ngÃ y trong thÃ¡ng hiá»‡n táº¡i â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── ThisMonth: từng ngày trong tháng hiện tại ─────────────────────
             case "ThisMonth":
             {
                 var monthStart = new DateTime(now.Year, now.Month, 1);
@@ -238,7 +239,7 @@ public class IssueService : IIssueService
                 break;
             }
 
-            // â”€â”€ ThisYear: 12 thÃ¡ng â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── ThisYear: 12 tháng ─────────────────────────────────────────────
             case "ThisYear":
             default:
             {
@@ -395,7 +396,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = "Vui lÃ²ng chá»n tá»« 1 Ä‘áº¿n 5 loáº¡i sá»± cá»‘."
+                Message = "Vui lòng chọn từ 1 đến 5 loại sự cố."
             };
         }
 
@@ -405,7 +406,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = "TÃ i khoáº£n cÃ´ng dÃ¢n khÃ´ng tá»“n táº¡i."
+                Message = "Tài khoản công dân không tồn tại."
             };
         }
 
@@ -417,7 +418,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = "Má»™t hoáº·c nhiá»u loáº¡i sá»± cá»‘ khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ vÃ´ hiá»‡u hÃ³a."
+                Message = "Một hoặc nhiều loại sự cố không tồn tại hoặc đã bị vô hiệu hóa."
             };
         }
 
@@ -428,7 +429,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = "Vui lÃ²ng mÃ´ táº£ cá»¥ thá»ƒ khi chá»n loáº¡i sá»± cá»‘ OTHER."
+                Message = "Vui lòng mô tả cụ thể khi chọn loại sự cố OTHER."
             };
         }
 
@@ -439,7 +440,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = $"Khu vá»±c (ID: {request.AreaId}) khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ vÃ´ hiá»‡u hÃ³a."
+                Message = $"Khu vực (ID: {request.AreaId}) không tồn tại hoặc đã bị vô hiệu hóa."
             };
         }
 
@@ -453,7 +454,7 @@ public class IssueService : IIssueService
                 return new ApiResponse<IssueDetailResponse>
                 {
                     Success = false,
-                    Message = $"Má»©c Ä‘á»™ Æ°u tiÃªn (ID: {request.PriorityId.Value}) khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ vÃ´ hiá»‡u hÃ³a."
+                    Message = $"Mức độ ưu tiên (ID: {request.PriorityId.Value}) không tồn tại hoặc đã bị vô hiệu hóa."
                 };
             }
         }
@@ -469,7 +470,7 @@ public class IssueService : IIssueService
                 return new ApiResponse<IssueDetailResponse>
                 {
                     Success = false,
-                    Message = "Há»‡ thá»‘ng chÆ°a cáº¥u hÃ¬nh má»©c Ä‘á»™ Æ°u tiÃªn máº·c Ä‘á»‹nh."
+                    Message = "Hệ thống chưa cấu hình mức độ ưu tiên mặc định."
                 };
             }
         }
@@ -484,7 +485,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = "Há»‡ thá»‘ng chÆ°a cáº¥u hÃ¬nh tráº¡ng thÃ¡i sá»± cá»‘."
+                Message = "Hệ thống chưa cấu hình trạng thái sự cố."
             };
         }
 
@@ -515,7 +516,7 @@ public class IssueService : IIssueService
         _context.Reports.Add(report);
         await _context.SaveChangesAsync(cancellationToken);
 
-        // Táº¡o liÃªn káº¿t Report - IssueType
+        // Tạo liên kết Report - IssueType
         foreach (var issueType in issueTypes)
         {
             _context.ReportIssueTypes.Add(new ReportIssueType
@@ -570,7 +571,7 @@ public class IssueService : IIssueService
                 FirstResponseMinutes = firstResponseMinutes,
                 ResolutionMinutes = resolutionMinutes,
                 FirstResponseDueAt = reportedAt.AddMinutes(firstResponseMinutes),
-                ResolutionDueAt = reportedAt.AddMinutes(resolutionMinutes),
+                // ResolutionDueAt se duoc set khi staff nhan Accept assignment
                 CreatedAt = reportedAt
             });
 
@@ -579,7 +580,7 @@ public class IssueService : IIssueService
             {
                 IssueId = issue.IssueId,
                 ToStatusId = status.StatusId,
-                Note = $"Report {report.PublicCode} Ä‘Ã£ táº¡o issue {issue.PublicCode} ({typeName}).",
+                Note = $"Report {report.PublicCode} đã tạo issue {issue.PublicCode} ({typeName}).",
                 CreatedBy = reporterId,
                 IsSystemGenerated = true,
                 CreatedAt = reportedAt
@@ -601,7 +602,7 @@ public class IssueService : IIssueService
                     DepartmentId = routingRule.DepartmentId,
                     RoutingRuleId = routingRule.RoutingRuleId,
                     AssignmentMethod = "AUTO",
-                    AssignmentNote = "Tá»± Ä‘á»™ng Ä‘á»‹nh tuyáº¿n theo loáº¡i sá»± cá»‘ vÃ  khu vá»±c.",
+                    AssignmentNote = "Tự động định tuyến theo loại sự cố và khu vực.",
                     AssignedAt = reportedAt,
                     IsCurrent = true
                 });
@@ -610,7 +611,7 @@ public class IssueService : IIssueService
                     IssueId = issue.IssueId,
                     FromStatusId = status.StatusId,
                     ToStatusId = status.StatusId,
-                    Note = $"Issue {issue.PublicCode} cá»§a report {report.PublicCode} Ä‘Ã£ Ä‘á»‹nh tuyáº¿n Ä‘áº¿n '{routingRule.Department.DepartmentName}'.",
+                    Note = $"Issue {issue.PublicCode} của report {report.PublicCode} đã định tuyến đến '{routingRule.Department.DepartmentName}'.",
                     CreatedBy = reporterId,
                     IsSystemGenerated = true,
                     CreatedAt = reportedAt
@@ -627,7 +628,7 @@ public class IssueService : IIssueService
             });
         }
 
-        // Láº¥y ID cá»§a update khá»Ÿi táº¡o trÆ°á»›c khi lÆ°u attachment.
+        // Lấy ID của update khởi tạo trước khi lưu attachment.
         await _context.SaveChangesAsync(cancellationToken);
 
         if (request.Images != null && request.Images.Count > 0)
@@ -660,7 +661,7 @@ public class IssueService : IIssueService
                 var fileUrl = $"/uploads/issues/{uniqueFileName}";
                 var attachment = new IssueAttachment(initialUpdates[issues[0].IssueId].Id)
                 {
-                    // áº¢nh gá»‘c thuá»™c Report; trong schema chuyá»ƒn tiáº¿p gáº¯n vÃ o Issue Ä‘áº§u tiÃªn.
+                    // Ảnh gốc thuộc Report; trong schema chuyển tiếp gắn vào Issue đầu tiên.
                     IssueId = issues[0].IssueId,
                     UploadedBy = reporterId,
                     Kind = "image",
@@ -684,7 +685,7 @@ public class IssueService : IIssueService
         return new ApiResponse<IssueDetailResponse>
         {
             Success = true,
-            Message = $"Táº¡o report {report.PublicCode} vá»›i {issues.Count} issue thÃ nh cÃ´ng.",
+            Message = $"Tạo report {report.PublicCode} với {issues.Count} issue thành công.",
             Data = detailResult.Data
         };
     }
@@ -710,7 +711,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IssueDetailResponse>
             {
                 Success = false,
-                Message = $"KhÃ´ng tÃ¬m tháº¥y bÃ¡o cÃ¡o sá»± cá»‘ cÃ³ ID = {issueId}"
+                Message = $"Không tìm thấy báo cáo sự cố có ID = {issueId}"
             };
         }
 
@@ -725,7 +726,7 @@ public class IssueService : IIssueService
                 .AnyAsync(u => u.IssueId == issue.IssueId && u.UserId == currentUserId, cancellationToken);
         }
 
-        var response = MapToDetailResponse(issue, reporter?.FullName ?? "CÃ´ng dÃ¢n", hasUpvoted);
+        var response = MapToDetailResponse(issue, reporter?.FullName ?? "Công dân", hasUpvoted);
 
         var currentDepartment = await _context.IssueAssignments
             .Where(x => x.IssueId == issueId && x.IsCurrent)
@@ -1036,7 +1037,7 @@ public class IssueService : IIssueService
             return new ApiResponse<IReadOnlyList<IssueTimelineItemResponse>>
             {
                 Success = false,
-                Message = $"KhÃ´ng tÃ¬m tháº¥y bÃ¡o cÃ¡o sá»± cá»‘ cÃ³ ID = {issueId}"
+                Message = $"Không tìm thấy báo cáo sự cố có ID = {issueId}"
             };
         }
 
@@ -1052,9 +1053,9 @@ public class IssueService : IIssueService
         var timelineItems = updates.Select(u => new IssueTimelineItemResponse
         {
             Id = u.Id,
-            UpdateType = u.Note != null && u.Note.StartsWith("ÄÃ£ Ä‘á»‹nh tuyáº¿n")
+            UpdateType = u.Note != null && u.Note.StartsWith("Đã định tuyến")
                 ? "ROUTED"
-                : u.Note != null && u.Note.StartsWith("ÄÃ£ chuyá»ƒn Ä‘Æ¡n vá»‹")
+                : u.Note != null && u.Note.StartsWith("Đã chuyển đơn vị")
                     ? "REASSIGNED"
                     : u.FromStatusId == null ? "CREATED" : "STATUS_CHANGE",
             FromStatus = u.FromStatus != null ? new LookupItemResponse
@@ -1198,5 +1199,330 @@ public class IssueService : IIssueService
     }
 
     private static double ToRadians(double angle) => (Math.PI / 180) * angle;
-}
 
+    public async Task<ApiResponse<IssueDetailResponse>> RequestReopenIssueAsync(
+        long issueId,
+        string note,
+        IReadOnlyList<IFormFile>? images,
+        string reporterId,
+        CancellationToken cancellationToken = default)
+    {
+        var issue = await _context.Issues
+            .Include(i => i.Status)
+            .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken);
+
+        if (issue == null)
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = $"Không tìm thấy sự cố có ID = {issueId}."
+            };
+        }
+
+        if (issue.ReporterId != reporterId)
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = "Bạn không có quyền yêu cầu mở lại sự cố này."
+            };
+        }
+
+        var validStatusCodes = new[] { "RESOLVED" };
+        if (!validStatusCodes.Contains(issue.Status.StatusCode))
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = $"Chỉ có thể yêu cầu mở lại sự cố ở trạng thái 'Đã giải quyết'. Trạng thái hiện tại: '{issue.Status.StatusName}'."
+            };
+        }
+
+        var requestReopenStatus = await _context.IssueStatuses
+            .FirstOrDefaultAsync(s => s.StatusCode == "REQUEST_REOPEN", cancellationToken);
+
+        if (requestReopenStatus == null)
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = "Không tìm thấy trạng thái 'Yêu cầu xử lý lại' trong hệ thống."
+            };
+        }
+
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        var fromStatusId = issue.StatusId;
+
+        issue.StatusId = requestReopenStatus.StatusId;
+        issue.ResolvedAt = null;
+        issue.ClosedAt = null;
+
+        var updateNote = string.IsNullOrWhiteSpace(note)
+            ? $"Công dân yêu cầu mở lại sự cố {issue.PublicCode}."
+            : $"Công dân yêu cầu mở lại sự cố {issue.PublicCode}. Lý do: {note.Trim()}.";
+
+        var issueUpdate = new IssueUpdate
+        {
+            IssueId = issueId,
+            FromStatusId = fromStatusId,
+            ToStatusId = requestReopenStatus.StatusId,
+            Note = updateNote,
+            CreatedBy = reporterId,
+            IsSystemGenerated = false,
+            CreatedAt = now
+        };
+        _context.IssueUpdates.Add(issueUpdate);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        if (images != null && images.Count > 0)
+        {
+            var webRoot = _environment.WebRootPath;
+            if (string.IsNullOrEmpty(webRoot))
+            {
+                webRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            }
+
+            var uploadsFolder = Path.Combine(webRoot, "uploads", "issues");
+            if (!Directory.Exists(uploadsFolder))
+            {
+                Directory.CreateDirectory(uploadsFolder);
+            }
+
+            foreach (var image in images)
+            {
+                if (image.Length == 0) continue;
+
+                var ext = Path.GetExtension(image.FileName).ToLowerInvariant();
+                var uniqueFileName = $"{Guid.NewGuid():N}{ext}";
+                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await image.CopyToAsync(stream, cancellationToken);
+                }
+
+                var fileUrl = $"/uploads/issues/{uniqueFileName}";
+                _context.IssueAttachments.Add(new IssueAttachment(issueUpdate.Id)
+                {
+                    IssueId = issueId,
+                    UploadedBy = reporterId,
+                    Kind = "image",
+                    FileUrl = fileUrl,
+                    ThumbnailUrl = fileUrl,
+                    MimeType = string.IsNullOrWhiteSpace(image.ContentType) ? "image/jpeg" : image.ContentType,
+                    FileSizeBytes = image.Length,
+                    CreatedAt = now
+                });
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        var currentAssignment = await _context.IssueAssignments
+            .FirstOrDefaultAsync(a => a.IssueId == issueId && a.IsCurrent, cancellationToken);
+
+        if (currentAssignment != null)
+        {
+            var manager = await _context.DepartmentMembers
+                .FirstOrDefaultAsync(dm => dm.DepartmentId == currentAssignment.DepartmentId && dm.IsManager && dm.IsActive, cancellationToken);
+
+            if (manager != null)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    UserId = manager.UserId,
+                    Title = "Công dân yêu cầu xử lý lại sự cố",
+                    Message = $"Sự cố '{issue.Title}' ({issue.PublicCode}) đã được công dân yêu cầu xử lý lại. Vui lòng kiểm tra và duyệt.",
+                    NotificationType = "REQUEST_REOPEN",
+                    IssueId = issueId,
+                    IsRead = false,
+                    CreatedAt = now
+                });
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return (await GetIssueByIdAsync(issueId, reporterId, cancellationToken));
+    }
+
+    public async Task<ApiResponse<IssueDetailResponse>> ReviewReopenIssueAsync(
+        long issueId,
+        bool approved,
+        string? note,
+        string managerUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var issue = await _context.Issues
+            .Include(i => i.Status)
+            .Include(i => i.Sla)
+            .ThenInclude(s => s!.SlaPolicy)
+            .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken);
+
+        if (issue == null)
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = $"Không tìm thấy sự cố có ID = {issueId}."
+            };
+        }
+
+        if (issue.Status.StatusCode != "REQUEST_REOPEN")
+        {
+            return new ApiResponse<IssueDetailResponse>
+            {
+                Success = false,
+                Message = $"Sự cố này không ở trạng thái 'Yêu cầu xử lý lại'. Trạng thái hiện tại: '{issue.Status.StatusName}'."
+            };
+        }
+
+        var currentAssignment = await _context.IssueAssignments
+            .FirstOrDefaultAsync(a => a.IssueId == issueId && a.IsCurrent, cancellationToken);
+
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        var fromStatusId = issue.StatusId;
+
+        IssueStatus? targetStatus;
+        string updateNote;
+
+        if (approved)
+        {
+            targetStatus = await _context.IssueStatuses
+                .FirstOrDefaultAsync(s => s.StatusCode == "IN_PROGRESS", cancellationToken);
+
+            if (targetStatus == null)
+            {
+                return new ApiResponse<IssueDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy trạng thái 'IN_PROGRESS' trong hệ thống."
+                };
+            }
+
+            if (currentAssignment != null)
+            {
+                var completedMembers = await _context.IssueAssignmentMembers
+                    .Where(m => m.AssignmentId == currentAssignment.AssignmentId && m.Status == AssignmentMemberStatus.Completed)
+                    .ToListAsync(cancellationToken);
+
+                foreach (var member in completedMembers)
+                {
+                    member.Status = AssignmentMemberStatus.Accepted;
+                    member.AcceptedAt = now;
+                    member.EndedAt = null;
+                }
+
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+
+            if (issue.Sla != null)
+            {
+                var policy = issue.Sla.SlaPolicy;
+                var resolutionMinutes = policy?.ResolutionMinutes ?? issue.Sla.ResolutionMinutes;
+                var firstResponseMinutes = policy?.FirstResponseMinutes ?? issue.Sla.FirstResponseMinutes;
+
+                issue.Sla.ResolutionDueAt = now.AddMinutes(resolutionMinutes);
+                issue.Sla.ResolvedAt = null;
+                issue.Sla.IsResolutionBreached = false;
+                issue.Sla.FirstResponseDueAt = now.AddMinutes(firstResponseMinutes);
+            }
+
+            issue.ResolvedAt = null;
+            issue.ClosedAt = null;
+
+            updateNote = string.IsNullOrWhiteSpace(note)
+                ? $"Manager duyệt yêu cầu xử lý lại. Sự cố được chuyển sang '{targetStatus.StatusName}'."
+                : $"Manager duyệt yêu cầu xử lý lại. Sự cố được chuyển sang '{targetStatus.StatusName}'. Ghi chú: {note.Trim()}.";
+        }
+        else
+        {
+            targetStatus = await _context.IssueStatuses
+                .FirstOrDefaultAsync(s => s.StatusCode == "REJECTED", cancellationToken);
+
+            if (targetStatus == null)
+            {
+                return new ApiResponse<IssueDetailResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy trạng thái 'REJECTED' trong hệ thống."
+                };
+            }
+
+            updateNote = string.IsNullOrWhiteSpace(note)
+                ? $"Manager từ chối yêu cầu xử lý lại sự cố."
+                : $"Manager từ chối yêu cầu xử lý lại sự cố. Lý do: {note.Trim()}.";
+        }
+
+        issue.StatusId = targetStatus.StatusId;
+
+        if (!approved)
+        {
+            issue.ClosedAt = now;
+        }
+
+        _context.IssueUpdates.Add(new IssueUpdate
+        {
+            IssueId = issueId,
+            FromStatusId = fromStatusId,
+            ToStatusId = targetStatus.StatusId,
+            Note = updateNote,
+            CreatedBy = managerUserId,
+            IsSystemGenerated = false,
+            CreatedAt = now
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        if (approved && currentAssignment != null)
+        {
+            var assignedMemberIds = await _context.IssueAssignmentMembers
+                .Where(m => m.AssignmentId == currentAssignment.AssignmentId && m.Status == AssignmentMemberStatus.Accepted)
+                .Select(m => m.UserId)
+                .ToListAsync(cancellationToken);
+
+            foreach (var memberUserId in assignedMemberIds)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    UserId = memberUserId,
+                    Title = "Sự cố được yêu cầu xử lý lại",
+                    Message = $"Sự cố '{issue.Title}' ({issue.PublicCode}) đã được duyệt yêu cầu xử lý lại. Vui lòng tiếp tục xử lý.",
+                    NotificationType = "REQUEST_REOPEN_APPROVED",
+                    IssueId = issueId,
+                    IsRead = false,
+                    CreatedAt = now
+                });
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        if (!string.IsNullOrEmpty(issue.ReporterId))
+        {
+            _context.Notifications.Add(new Notification
+            {
+                UserId = issue.ReporterId,
+                Title = approved
+                    ? "Yêu cầu xử lý lại đã được duyệt"
+                    : "Yêu cầu xử lý lại bị từ chối",
+                Message = approved
+                    ? $"Yêu cầu xử lý lại của bạn cho sự cố '{issue.Title}' ({issue.PublicCode}) đã được duyệt. Sự cố đang được tiếp tục xử lý."
+                    : $"Yêu cầu xử lý lại của bạn cho sự cố '{issue.Title}' ({issue.PublicCode}) đã bị từ chối.{(string.IsNullOrWhiteSpace(note) ? "" : $" Lý do: {note.Trim()}.")}",
+                NotificationType = approved ? "REQUEST_REOPEN_APPROVED" : "REQUEST_REOPEN_REJECTED",
+                IssueId = issueId,
+                IsRead = false,
+                CreatedAt = now
+            });
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return (await GetIssueByIdAsync(issueId, null, cancellationToken));
+    }
+}

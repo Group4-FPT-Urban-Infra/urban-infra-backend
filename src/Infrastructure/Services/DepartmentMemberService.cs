@@ -13,11 +13,13 @@ public class DepartmentMemberService : IDepartmentMemberService
 {
     private readonly AppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ICurrentUserService _currentUser;
 
-    public DepartmentMemberService(AppDbContext context, UserManager<ApplicationUser> userManager)
+    public DepartmentMemberService(AppDbContext context, UserManager<ApplicationUser> userManager, ICurrentUserService currentUser)
     {
         _context = context;
         _userManager = userManager;
+        _currentUser = currentUser;
     }
 
     public async Task<List<DepartmentMemberResponse>> GetMembersAsync(
@@ -98,6 +100,28 @@ public class DepartmentMemberService : IDepartmentMemberService
         member.LeftAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<DepartmentMemberResponse?> GetCurrentUserDepartmentAsync(CancellationToken cancellationToken = default)
+    {
+        var userId = _currentUser.UserId;
+        if (string.IsNullOrEmpty(userId)) return null;
+
+        return await (from member in _context.DepartmentMembers.AsNoTracking()
+                      join user in _context.Users.AsNoTracking() on member.UserId equals user.Id
+                      where member.UserId == userId && member.IsActive
+                      select new DepartmentMemberResponse
+                      {
+                          DepartmentId = member.DepartmentId,
+                          UserId = member.UserId,
+                          FullName = user.FullName,
+                          Email = user.Email,
+                          JobTitle = member.JobTitle,
+                          IsManager = member.IsManager,
+                          JoinedAt = member.JoinedAt,
+                          LeftAt = member.LeftAt,
+                          IsActive = member.IsActive
+                      }).FirstOrDefaultAsync(cancellationToken);
     }
 
     private async Task EnsureDepartmentExistsAsync(int id, bool requireActive, CancellationToken cancellationToken)
