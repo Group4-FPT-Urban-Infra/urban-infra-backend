@@ -29,7 +29,9 @@ public class DepartmentService : IDepartmentService
         }
 
         var departments = await query.OrderBy(x => x.DepartmentCode).ToListAsync(cancellationToken);
-        return departments.Select(Map).ToList();
+        var responses = departments.Select(Map).ToList();
+        await PopulateManagersAsync(responses, cancellationToken);
+        return responses;
     }
 
     public async Task<DepartmentResponse?> GetDepartmentByIdAsync(int id, CancellationToken cancellationToken = default)
@@ -43,6 +45,7 @@ public class DepartmentService : IDepartmentService
         if (department is null) return null;
         var response = Map(department);
         response.ChildDepartments = department.ChildDepartments.OrderBy(x => x.DepartmentCode).Select(Map).ToList();
+        await PopulateManagersAsync(new List<DepartmentResponse> { response }, cancellationToken);
         return response;
     }
 
@@ -111,7 +114,15 @@ public class DepartmentService : IDepartmentService
             .ToListAsync(cancellationToken);
         _context.DepartmentMembers.RemoveRange(membershipHistory);
         _context.Departments.Remove(department);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new InvalidOperationException(
+                "Không thể xóa đơn vị vì đơn vị đang được tham chiếu bởi dữ liệu nghiệp vụ.", ex);
+        }
         return true;
     }
 
@@ -159,4 +170,32 @@ public class DepartmentService : IDepartmentService
         CreatedAt = x.CreatedAt,
         UpdatedAt = x.UpdatedAt
     };
+
+    private async Task PopulateManagersAsync(List<DepartmentResponse> responses, CancellationToken cancellationToken)
+    {
+        if (!responses.Any()) return;
+        var departmentIds = responses.Select(x => x.DepartmentId).ToList();
+        
+        var managers = await _context.DepartmentMembers.AsNoTracking()
+            .Where(m => departmentIds.Contains(m.DepartmentId) && m.IsManager && m.IsActive)
+            .Join(_context.Users.AsNoTracking(), m => m.UserId, u => u.Id, (m, u) => new 
+            { 
+                m.DepartmentId, 
+                u.Id, 
+                u.FullName, 
+                u.Email 
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var r in responses)
+        {
+            var manager = managers.FirstOrDefault(m => m.DepartmentId == r.DepartmentId);
+            if (manager != null)
+            {
+                r.ManagerId = manager.Id;
+                r.ManagerFullName = manager.FullName;
+                r.ManagerEmail = manager.Email;
+            }
+        }
+    }
 }

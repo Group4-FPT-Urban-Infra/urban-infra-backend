@@ -9,6 +9,7 @@ using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Infrastructure.Identity;
 using UrbanInfraSystem.Infrastructure.Persistence;
 using UrbanInfraSystem.Infrastructure.Services;
+using UrbanInfraSystem.Infrastructure.Services.Elaboration;
 
 namespace UrbanInfraSystem.Infrastructure;
 
@@ -20,7 +21,7 @@ public static class DependencyInjection
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection"),
-                x => x.UseNetTopologySuite()));
+                x => x.UseNetTopologySuite().MigrationsAssembly("UrbanInfraSystem.Infrastructure")));
 
         // --- Identity ---
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -67,6 +68,7 @@ public static class DependencyInjection
             });
 
         services.AddAuthorization();
+        services.AddSignalR();
 
         // --- Application services ---
         services.AddHttpContextAccessor();
@@ -80,8 +82,35 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentService, DepartmentService>();
         services.AddScoped<IDepartmentMemberService, DepartmentMemberService>();
         services.AddScoped<ISlaPolicyService, SlaPolicyService>();
+
         services.AddScoped<IUserManagementService, UserManagementService>();
+        services.AddScoped<IIssueService, IssueService>();
+        services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<IIssueUpvoteService, IssueUpvoteService>();
         services.AddScoped<IRoutingRuleService, RoutingRuleService>();
+        services.AddScoped<IIssueAssignmentService, IssueAssignmentService>();
+        services.AddScoped<IReRouteRequestService, ReRouteRequestService>();
+
+        services.AddScoped<IStaffService, StaffService>();
+
+        services.AddScoped<IIssueAssignmentMemberService, IssueAssignmentMemberService>();
+        services.AddScoped<INotificationService, NotificationService>();
+
+        // --- Department Manager services ---
+        services.AddScoped<IDepartmentManagerDashboardService, DepartmentManagerDashboardService>();
+        services.AddScoped<IDepartmentManagerIssueService, DepartmentManagerIssueService>();
+        services.AddScoped<IDepartmentManagerSlaService, DepartmentManagerSlaService>();
+        services.AddScoped<IDepartmentManagerStaffService, DepartmentManagerStaffService>();
+
+        // --- Background Hosted Services ---
+        services.AddHostedService<UrbanInfraSystem.Infrastructure.BackgroundServices.SlaCheckBackgroundService>();
+
+        services.AddScoped<IEscalationRuleService, EscalationRuleService>();
+        services.AddScoped<IEscalationEventService, EscalationEventService>();
+        // Escalation processor and background worker
+        services.AddScoped<EscalationProcessor>();
+        services.AddHostedService<EscalationBackgroundService>();
+
 
         return services;
     }

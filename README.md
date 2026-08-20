@@ -41,6 +41,36 @@ Implement CRUD for SLA policies based on Issue Type + Priority.
 
 Code changed and saved.
 
+### 2026-08-12 - Add Escalation Rules CRUD
+
+**Prompt:**
+
+Implement CRUD for Escalation Rules mapping SLA Policy + overdue minutes to target department/role.
+
+**Files changed:**
+
+- `src/Domain/Entities/EscalationRule.cs`
+- `src/Application/DTOs/EscalationRules/EscalationRuleDtos.cs`
+- `src/Application/Interfaces/IEscalationRuleService.cs`
+- `src/Infrastructure/Services/EscalationRuleService.cs`
+- `src/Infrastructure/Persistence/AppDbContext.cs` (DbSet + entity config)
+- `src/Infrastructure/DependencyInjection.cs` (register service)
+- `src/API/Controllers/EscalationRulesController.cs`
+- `src/Infrastructure/Migrations/20260812093000_AddEscalationRules.cs`
+
+**Changes:**
+
+- Added EscalationRule entity linking SLA policy, overdue minutes and target department/role.
+- Added DTOs and service interface for EscalationRule CRUD.
+- Implemented EscalationRuleService with validation (SLA existence, department existence, role existence via RoleManager), duplicate prevention, soft-delete handling.
+- Added EF Core configuration with FK to SlaPolicies and Departments, unique constraint preventing identical rules.
+- Added migration to create EscalationRules table.
+- Added Admin-only API controller for CRUD operations.
+
+**Status:**
+
+Code changed and saved.
+
 UrbanInfraSystem/
 ├── UrbanInfraSystem.sln
 ├── Dockerfile

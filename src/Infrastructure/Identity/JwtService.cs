@@ -17,7 +17,7 @@ public class JwtService : IJwtService
         _settings = options.Value;
     }
 
-    public (string token, DateTime expiresAtUtc) GenerateAccessToken(string userId, string email, IEnumerable<string> roles)
+    public (string token, DateTime expiresAtUtc) GenerateAccessToken(string userId, string email, IEnumerable<string> roles, int? departmentId = null)
     {
         var claims = new List<Claim>
         {
@@ -27,6 +27,11 @@ public class JwtService : IJwtService
         };
 
         claims.AddRange(roles.Select(role => new Claim("role", role)));
+
+        if (departmentId.HasValue)
+        {
+            claims.Add(new Claim("department_id", departmentId.Value.ToString()));
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

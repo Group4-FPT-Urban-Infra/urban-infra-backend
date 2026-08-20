@@ -17,7 +17,7 @@ public class AdminUserListRequest
     public string? Keyword { get; set; }
 
     /// <summary>Lọc theo phòng ban (DepartmentId). Bỏ trống = tất cả.</summary>
-    public Guid? DepartmentId { get; set; }
+    public int? DepartmentId { get; set; }
 
     /// <summary>Số trang hiện tại, bắt đầu từ 1.</summary>
     [Range(1, int.MaxValue)]

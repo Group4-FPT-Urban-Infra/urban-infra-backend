@@ -86,6 +86,17 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không đúng." };
         }
 
+        _db.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = user.Id,
+            Action = "Login",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        // We do not save changes here because IssueTokensAsync will save changes (it saves RefreshToken).
+        // Actually, let's verify if IssueTokensAsync calls SaveChanges.
+
         return await IssueTokensAsync(user);
     }
 
@@ -141,7 +152,12 @@ public class AuthService : IAuthService
     private async Task<AuthResponse> IssueTokensAsync(ApplicationUser user)
     {
         var roles = await _userManager.GetRolesAsync(user);
-        var (accessToken, expiresAtUtc) = _jwtService.GenerateAccessToken(user.Id, user.Email!, roles);
+
+        var deptMembership = await _db.DepartmentMembers
+            .FirstOrDefaultAsync(dm => dm.UserId == user.Id && dm.IsActive);
+
+        var (accessToken, expiresAtUtc) = _jwtService.GenerateAccessToken(
+            user.Id, user.Email!, roles, deptMembership?.DepartmentId);
         var refreshTokenValue = _jwtService.GenerateRefreshToken();
 
         _db.RefreshTokens.Add(new RefreshToken

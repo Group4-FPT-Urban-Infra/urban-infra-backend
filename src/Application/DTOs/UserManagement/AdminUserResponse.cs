@@ -18,7 +18,7 @@ public class AdminUserResponse
     public IList<string> Roles { get; set; } = new List<string>();
 
     /// <summary>Phòng ban phụ trách (chỉ DepartmentStaff mới có giá trị).</summary>
-    public Guid? DepartmentId { get; set; }
+    public int? DepartmentId { get; set; }
 
     /// <summary>Tài khoản đang hoạt động hay đã bị khoá.</summary>
     public bool IsActive { get; set; }

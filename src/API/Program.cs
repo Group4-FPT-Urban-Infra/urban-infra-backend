@@ -132,10 +132,12 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("AllowFrontend");
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<UrbanInfraSystem.Infrastructure.Hubs.NotificationHub>("/hubs/notifications");
 
 app.Run();

@@ -11,8 +11,6 @@ public class ApplicationUser : IdentityUser
 {
     public string FullName { get; set; } = default!;
 
-    /// <summary>Chỉ áp dụng cho role DepartmentStaff: đơn vị/phòng ban phụ trách.</summary>
-    public Guid? DepartmentId { get; set; }
 
     public bool IsActive { get; set; } = true;
 

@@ -25,9 +25,10 @@ public class IssueTypeService : IIssueTypeService
     /// <inheritdoc />
     public async Task<ApiResponse<IssueTypeResponse>> CreateAsync(CreateIssueTypeRequest request)
     {
-        // 1. Validate: Kiểm tra TypeCode đã tồn tại chưa
+        // 1. Validate: Kiểm tra TypeCode đã tồn tại chưa (bao gồm cả bản ghi đã xóa vì DB Unique Constraint)
+        var upperCode = request.TypeCode.Trim().ToUpperInvariant();
         var existing = await _db.IssueTypes
-            .FirstOrDefaultAsync(it => it.TypeCode == request.TypeCode && !it.IsDeleted);
+            .FirstOrDefaultAsync(it => it.TypeCode == upperCode);
 
         if (existing != null)
         {
@@ -65,7 +66,7 @@ public class IssueTypeService : IIssueTypeService
         // 4. Tạo entity
         var issueType = new IssueType
         {
-            TypeCode = request.TypeCode.ToUpperInvariant(),
+            TypeCode = upperCode,
             TypeName = request.TypeName.Trim(),
             ParentIssueTypeId = request.ParentIssueTypeId,
             IconUrl = request.IconUrl?.Trim(),
@@ -121,6 +122,11 @@ public class IssueTypeService : IIssueTypeService
         if (request.IsRootOnly == true)
         {
             query = query.Where(it => it.ParentIssueTypeId == null);
+        }
+
+        if (request.IsSubCategoryOnly == true)
+        {
+            query = query.Where(it => it.ParentIssueTypeId != null);
         }
 
         if (request.IsActiveOnly == true)
@@ -199,9 +205,9 @@ public class IssueTypeService : IIssueTypeService
         // 1. Validate TypeCode mới (nếu thay đổi)
         if (!string.IsNullOrWhiteSpace(request.TypeCode))
         {
+            var upperCode = request.TypeCode.Trim().ToUpperInvariant();
             var codeExists = await _db.IssueTypes
-                .AnyAsync(it => it.TypeCode == request.TypeCode.ToUpperInvariant()
-                    && it.IssueTypeId != id && !it.IsDeleted);
+                .AnyAsync(it => it.TypeCode == upperCode && it.IssueTypeId != id);
 
             if (codeExists)
             {
@@ -212,7 +218,7 @@ public class IssueTypeService : IIssueTypeService
                 };
             }
 
-            issueType.TypeCode = request.TypeCode.ToUpperInvariant();
+            issueType.TypeCode = upperCode;
         }
 
         // 2. Validate ParentIssueTypeId (nếu thay đổi)
@@ -416,6 +422,7 @@ public class IssueTypeService : IIssueTypeService
         var issueType = await _db.IssueTypes
             .Include(it => it.ParentIssueType)
             .Include(it => it.SubIssueTypes.Where(s => !s.IsDeleted))
+            .Include(it => it.SlaPolicies)
             .FirstOrDefaultAsync(it => it.IssueTypeId == id && !it.IsDeleted);
 
         if (issueType == null)
@@ -439,6 +446,28 @@ public class IssueTypeService : IIssueTypeService
     /// </summary>
     private static IssueTypeResponse MapToResponse(IssueType entity)
     {
+        string? slaSummary = null;
+        if (entity.SlaPolicies != null && entity.SlaPolicies.Any())
+        {
+            if (entity.SlaPolicies.Count == 1)
+            {
+                var policy = entity.SlaPolicies.First();
+                if (policy.ResolutionMinutes > 0)
+                {
+                    if (policy.ResolutionMinutes >= 1440)
+                        slaSummary = $"{policy.ResolutionMinutes / 1440}-Day Resolution";
+                    else if (policy.ResolutionMinutes >= 60)
+                        slaSummary = $"{policy.ResolutionMinutes / 60}-Hour Resolution";
+                    else
+                        slaSummary = $"{policy.ResolutionMinutes}-Min Resolution";
+                }
+            }
+            else
+            {
+                slaSummary = "Multiple SLAs";
+            }
+        }
+
         return new IssueTypeResponse
         {
             IssueTypeId = entity.IssueTypeId,
@@ -447,6 +476,7 @@ public class IssueTypeService : IIssueTypeService
             TypeName = entity.TypeName,
             IconUrl = entity.IconUrl,
             Description = entity.Description,
+            SlaPolicySummary = slaSummary,
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAtUtc,
             CreatedBy = entity.CreatedBy,
@@ -459,6 +489,7 @@ public class IssueTypeService : IIssueTypeService
                     TypeCode = entity.ParentIssueType.TypeCode,
                     TypeName = entity.ParentIssueType.TypeName,
                     IconUrl = entity.ParentIssueType.IconUrl,
+                    SlaPolicySummary = slaSummary,
                     IsActive = entity.ParentIssueType.IsActive
                 }
                 : null,

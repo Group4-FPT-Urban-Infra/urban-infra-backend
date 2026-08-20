@@ -34,5 +34,5 @@ public class CreateUserByAdminRequest
     /// <summary>
     /// Bắt buộc nếu Role = "DepartmentStaff". Bỏ qua với các role khác.
     /// </summary>
-    public Guid? DepartmentId { get; set; }
+    public int? DepartmentId { get; set; }
 }

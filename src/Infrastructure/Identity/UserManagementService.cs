@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using UrbanInfraSystem.Application.DTOs.UserManagement;
 using UrbanInfraSystem.Application.Interfaces;
 using UrbanInfraSystem.Domain.Enums;
+using UrbanInfraSystem.Domain.Entities;
+using UrbanInfraSystem.Infrastructure.Persistence;
 
 namespace UrbanInfraSystem.Infrastructure.Identity;
 
@@ -14,13 +16,22 @@ public class UserManagementService : IUserManagementService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<ApplicationRole> _roleManager;
+    private readonly AppDbContext _dbContext;
+    private readonly IDepartmentMemberService _departmentMemberService;
+    private readonly ICurrentUserService _currentUser;
 
     public UserManagementService(
         UserManager<ApplicationUser> userManager,
-        RoleManager<ApplicationRole> roleManager)
+        RoleManager<ApplicationRole> roleManager,
+        AppDbContext dbContext,
+        IDepartmentMemberService departmentMemberService,
+        ICurrentUserService currentUser)
     {
         _userManager = userManager;
         _roleManager = roleManager;
+        _dbContext = dbContext;
+        _departmentMemberService = departmentMemberService;
+        _currentUser = currentUser;
     }
 
     // ------------------------------------------------------------------ //
@@ -39,7 +50,12 @@ public class UserManagementService : IUserManagementService
 
         // Lọc theo phòng ban
         if (request.DepartmentId.HasValue)
-            query = query.Where(u => u.DepartmentId == request.DepartmentId.Value);
+        {
+            var userIdsInDept = _dbContext.DepartmentMembers
+                .Where(m => m.DepartmentId == request.DepartmentId.Value && m.IsActive)
+                .Select(m => m.UserId);
+            query = query.Where(u => userIdsInDept.Contains(u.Id));
+        }
 
         // Lọc theo từ khóa (FullName, Email, PhoneNumber)
         if (!string.IsNullOrWhiteSpace(request.Keyword))
@@ -74,11 +90,17 @@ public class UserManagementService : IUserManagementService
             .ToListAsync(ct);
 
         // Map sang DTO (cần lấy roles riêng vì Identity không join tự động)
+        var userIds = users.Select(u => u.Id).ToList();
+        var departmentMembers = await _dbContext.DepartmentMembers
+            .Where(m => userIds.Contains(m.UserId) && m.IsActive)
+            .ToDictionaryAsync(m => m.UserId, m => m.DepartmentId, ct);
+
         var items = new List<AdminUserResponse>(users.Count);
         foreach (var u in users)
         {
             var roles = await _userManager.GetRolesAsync(u);
-            items.Add(MapToResponse(u, roles));
+            var deptId = departmentMembers.TryGetValue(u.Id, out var id) ? (int?)id : null;
+            items.Add(MapToResponse(u, roles, deptId));
         }
 
         return new PagedResult<AdminUserResponse>
@@ -100,7 +122,9 @@ public class UserManagementService : IUserManagementService
         if (user is null) return null;
 
         var roles = await _userManager.GetRolesAsync(user);
-        return MapToResponse(user, roles);
+        var activeMember = await _dbContext.DepartmentMembers
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.IsActive, ct);
+        return MapToResponse(user, roles, activeMember?.DepartmentId);
     }
 
     // ------------------------------------------------------------------ //
@@ -129,7 +153,6 @@ public class UserManagementService : IUserManagementService
             Email = request.Email,
             FullName = request.FullName,
             PhoneNumber = request.PhoneNumber,
-            DepartmentId = request.Role == Roles.DepartmentStaff ? request.DepartmentId : null,
             IsActive = true,
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -143,8 +166,28 @@ public class UserManagementService : IUserManagementService
         await EnsureRoleExistsAsync(request.Role);
         await _userManager.AddToRoleAsync(user, request.Role);
 
+        if (request.Role == Roles.DepartmentStaff && request.DepartmentId.HasValue)
+        {
+            await _departmentMemberService.AssignMemberAsync(
+                request.DepartmentId.Value, 
+                new UrbanInfraSystem.Application.DTOs.Departments.AssignDepartmentMemberRequest 
+                { 
+                    UserId = user.Id 
+                }, ct);
+        }
+
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Create User",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
+
         var roles = await _userManager.GetRolesAsync(user);
-        return MapToResponse(user, roles);
+        return MapToResponse(user, roles, request.Role == Roles.DepartmentStaff ? request.DepartmentId : null);
     }
 
     // ------------------------------------------------------------------ //
@@ -166,7 +209,6 @@ public class UserManagementService : IUserManagementService
         // Cập nhật thông tin cơ bản
         user.FullName = request.FullName;
         user.PhoneNumber = request.PhoneNumber;
-        user.DepartmentId = request.Role == Roles.DepartmentStaff ? request.DepartmentId : null;
 
         var updateResult = await _userManager.UpdateAsync(user);
         if (!updateResult.Succeeded)
@@ -181,8 +223,37 @@ public class UserManagementService : IUserManagementService
         await EnsureRoleExistsAsync(request.Role);
         await _userManager.AddToRoleAsync(user, request.Role);
 
+        var activeMember = await _dbContext.DepartmentMembers
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.IsActive, ct);
+            
+        var targetDepartmentId = request.Role == Roles.DepartmentStaff ? request.DepartmentId : null;
+
+        if (activeMember?.DepartmentId != targetDepartmentId)
+        {
+            if (activeMember != null)
+                await _departmentMemberService.RemoveMemberAsync(activeMember.DepartmentId, userId, ct);
+
+            if (targetDepartmentId.HasValue)
+                await _departmentMemberService.AssignMemberAsync(
+                    targetDepartmentId.Value, 
+                    new UrbanInfraSystem.Application.DTOs.Departments.AssignDepartmentMemberRequest 
+                    { 
+                        UserId = userId 
+                    }, ct);
+        }
+
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Update User",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
+
         var roles = await _userManager.GetRolesAsync(user);
-        return MapToResponse(user, roles);
+        return MapToResponse(user, roles, targetDepartmentId);
     }
 
     // ------------------------------------------------------------------ //
@@ -197,6 +268,20 @@ public class UserManagementService : IUserManagementService
 
         user.IsActive = isActive;
         var result = await _userManager.UpdateAsync(user);
+        
+        if (result.Succeeded)
+        {
+            _dbContext.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = _currentUser.UserId,
+                Action = isActive ? "Unlock User" : "Lock User",
+                EntityName = "Users",
+                EntityId = user.Id,
+                OccurredAt = DateTime.UtcNow
+            });
+            await _dbContext.SaveChangesAsync(ct);
+        }
+
         return result.Succeeded;
     }
 
@@ -221,6 +306,16 @@ public class UserManagementService : IUserManagementService
             throw new InvalidOperationException(
                 "Không thể đặt mật khẩu mới: " + string.Join("; ", addResult.Errors.Select(e => e.Description)));
 
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Reset Password",
+            EntityName = "Users",
+            EntityId = user.Id,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
+
         return true;
     }
 
@@ -233,10 +328,32 @@ public class UserManagementService : IUserManagementService
         var user = await _userManager.FindByIdAsync(userId);
         if (user is null) return false;
 
-        var result = await _userManager.DeleteAsync(user);
+        if (userId == _currentUser.UserId)
+            throw new InvalidOperationException("Không thể xóa tài khoản đang đăng nhập.");
+
+        IdentityResult result;
+        try
+        {
+            result = await _userManager.DeleteAsync(user);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new InvalidOperationException(
+                "Không thể xóa tài khoản vì tài khoản đang được tham chiếu bởi dữ liệu nghiệp vụ. Hãy khóa tài khoản thay thế.", ex);
+        }
         if (!result.Succeeded)
             throw new InvalidOperationException(
                 "Không thể xóa tài khoản: " + string.Join("; ", result.Errors.Select(e => e.Description)));
+
+        _dbContext.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = _currentUser.UserId,
+            Action = "Delete User",
+            EntityName = "Users",
+            EntityId = userId,
+            OccurredAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync(ct);
 
         return true;
     }
@@ -245,7 +362,7 @@ public class UserManagementService : IUserManagementService
     //  HELPERS
     // ------------------------------------------------------------------ //
 
-    private static AdminUserResponse MapToResponse(ApplicationUser user, IList<string> roles)
+    private static AdminUserResponse MapToResponse(ApplicationUser user, IList<string> roles, int? departmentId)
         => new()
         {
             Id = user.Id,
@@ -253,7 +370,7 @@ public class UserManagementService : IUserManagementService
             Email = user.Email!,
             PhoneNumber = user.PhoneNumber,
             Roles = roles,
-            DepartmentId = user.DepartmentId,
+            DepartmentId = departmentId,
             IsActive = user.IsActive,
             CreatedAtUtc = user.CreatedAtUtc
         };

@@ -8,7 +8,8 @@ public static class Roles
 {
     public const string Admin = "Admin";
     public const string DepartmentStaff = "DepartmentStaff";
+    public const string DepartmentManager = "DepartmentManager";
     public const string Citizen = "Citizen";
 
-    public static readonly string[] All = { Admin, DepartmentStaff, Citizen };
+    public static readonly string[] All = { Admin, DepartmentStaff, DepartmentManager, Citizen };
 }
