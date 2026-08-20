@@ -74,6 +74,38 @@ public class NotificationService : INotificationService
         return items.Select(Map).ToList();
     }
 
+    public async Task<IReadOnlyList<NotificationResponse>> GetAllByUserIdAsync(string userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Array.Empty<NotificationResponse>();
+        }
+
+        var items = await _db.Notifications
+            .AsNoTracking()
+            .Where(n => n.UserId == userId)
+            .OrderByDescending(n => n.CreatedAt)
+            .ToListAsync(ct);
+
+        return items.Select(Map).ToList();
+    }
+
+    public async Task<IReadOnlyList<NotificationResponse>> GetReadByUserIdAsync(string userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Array.Empty<NotificationResponse>();
+        }
+
+        var items = await _db.Notifications
+            .AsNoTracking()
+            .Where(n => n.UserId == userId && n.IsRead)
+            .OrderByDescending(n => n.CreatedAt)
+            .ToListAsync(ct);
+
+        return items.Select(Map).ToList();
+    }
+
     public async Task<bool> MarkAsReadAsync(long notificationId, string userId, CancellationToken ct = default)
     {
         var entity = await _db.Notifications.FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId, ct);

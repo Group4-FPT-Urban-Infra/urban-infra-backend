@@ -2,6 +2,16 @@ using System.ComponentModel.DataAnnotations;
 
 namespace UrbanInfraSystem.Application.DTOs.DepartmentManager;
 
+public class ImageInfoDto
+{
+    public string Url { get; set; } = default!;
+    public string? ThumbnailUrl { get; set; }
+    public string UploadedByName { get; set; } = default!;
+    public string? UploadedByRole { get; set; }
+    public DateTime UploadedAt { get; set; }
+    public string Kind { get; set; } = default!;
+}
+
 public class DepartmentManagerIssueListRequest
 {
     public string? Filter { get; set; }
@@ -47,7 +57,7 @@ public class DepartmentManagerIssueDetailResponse
     public DateTime? ResolvedAt { get; set; }
     public int UpvoteCount { get; set; }
     public bool IsPublic { get; set; }
-    public List<string> ImageUrls { get; set; } = new();
+    public List<ImageInfoDto> ImageUrls { get; set; } = new();
     public CurrentAssignmentInfo? CurrentAssignment { get; set; }
     public List<AssignmentMemberInfo> AssignedMembers { get; set; } = new();
     public List<IssueUpdateInfo> Updates { get; set; } = new();
