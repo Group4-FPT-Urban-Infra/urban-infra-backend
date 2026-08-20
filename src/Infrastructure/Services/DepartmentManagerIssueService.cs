@@ -265,16 +265,6 @@ public class DepartmentManagerIssueService : IDepartmentManagerIssueService
             .FirstOrDefaultAsync(i => i.IssueId == issueId, cancellationToken)
             ?? throw new KeyNotFoundException($"Khong tim thay su co co ID = {issueId}.");
 
-        // Cap nhat FirstRespondedAt lan dau tien duoc gan nhan vien
-        if (issue.Sla != null && !issue.Sla.FirstRespondedAt.HasValue)
-        {
-            issue.Sla.FirstRespondedAt = now;
-            if (issue.Sla.FirstResponseDueAt.HasValue && now > issue.Sla.FirstResponseDueAt.Value)
-            {
-                issue.Sla.IsFirstResponseBreached = true;
-            }
-        }
-
         // Neu hien tai la trang thai NEW, chuyen sang ASSIGNED
         var currentStatus = await _context.IssueStatuses
             .AsNoTracking()

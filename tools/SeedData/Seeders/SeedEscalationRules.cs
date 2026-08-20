@@ -127,7 +127,7 @@ public class SeedEscalationRules
             rules.Add(new EscalationRule
             {
                 SlaPolicyId = sla.Id,
-                OverdueMinutes = 0,
+                OverdueMinutes = 1,
                 EscalationType = EscalationType.ResponseOverdue,
                 EscalationLevel = 2,
                 TargetRoleName = Roles.DepartmentManager,
@@ -147,7 +147,7 @@ public class SeedEscalationRules
                 rules.Add(new EscalationRule
                 {
                     SlaPolicyId = sla.Id,
-                    OverdueMinutes = 0,
+                    OverdueMinutes = 2,
                     EscalationType = EscalationType.ResponseOverdue,
                     EscalationLevel = 3,
                     TargetRoleName = Roles.DepartmentManager,
@@ -168,7 +168,7 @@ public class SeedEscalationRules
                 rules.Add(new EscalationRule
                 {
                     SlaPolicyId = sla.Id,
-                    OverdueMinutes = 0,
+                    OverdueMinutes = 3,
                     EscalationType = EscalationType.ResponseOverdue,
                     EscalationLevel = 4,
                     TargetRoleName = Roles.DepartmentManager,
@@ -188,7 +188,7 @@ public class SeedEscalationRules
             rules.Add(new EscalationRule
             {
                 SlaPolicyId = sla.Id,
-                OverdueMinutes = 0,
+                OverdueMinutes = 4,
                 EscalationType = EscalationType.ResponseOverdue,
                 EscalationLevel = adminLevel,
                 TargetRoleName = Roles.Admin,

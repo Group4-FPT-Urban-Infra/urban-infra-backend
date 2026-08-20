@@ -43,7 +43,7 @@ public class SeedSlaPolicies
             {
                 var (resolutionMinutes, firstResponseMinutes) = GetSlaMinutes(type.TypeCode, priority.PriorityCode);
                 // Warn at 50% of first response time
-                var warningMinutes = (int)(firstResponseMinutes * 0.5);
+                var warningMinutes = (int)Math.Ceiling(firstResponseMinutes * 0.5);
 
                 policies.Add(new SlaPolicy
                 {
@@ -67,7 +67,7 @@ public class SeedSlaPolicies
     {
         var baseResolution = priorityCode switch
         {
-            "CRITICAL" => 75,    // 75min base (LIGHT+CRITICAL = 5m, else 2h)
+            "CRITICAL" => 30,    // 75min base (LIGHT+CRITICAL = 5m, else 2h)
             "HIGH"     => 480,   // 8h resolve
             "MEDIUM"   => 1440,  // 24h resolve
             "LOW"      => 4320, // 72h resolve
